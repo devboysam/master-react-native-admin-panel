@@ -147,6 +147,10 @@ button.danger {
   background: #b42318;
 }
 
+button.secondary {
+  background: #475569;
+}
+
 .module-picker {
   display: flex;
   flex-direction: column;

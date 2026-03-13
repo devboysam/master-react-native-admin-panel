@@ -21,23 +21,40 @@ function getIconEmoji(icon) {
 }
 
 const initialModuleForm = {
+  id: null,
   title: '',
   description: '',
-  icon: 'book',
-  order_index: 0,
+  prerequisites: '',
+};
+
+const initialAppContentForm = {
+  welcome_title: '',
+  welcome_description: '',
+  motivation_text: '',
+  motivation_quote: '',
 };
 
 function App() {
   const [modules, setModules] = useState([]);
   const [moduleForm, setModuleForm] = useState(initialModuleForm);
+  const [appContentForm, setAppContentForm] = useState(initialAppContentForm);
   const [message, setMessage] = useState('');
   const [isLoadingModules, setIsLoadingModules] = useState(false);
   const [isSavingModule, setIsSavingModule] = useState(false);
+  const [isSavingAppContent, setIsSavingAppContent] = useState(false);
 
-  const orderedModules = useMemo(
-    () => [...modules].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0)),
-    [modules]
-  );
+  const orderedModules = useMemo(() => [...modules], [modules]);
+
+  async function fetchAppContent() {
+    const response = await axios.get(`${API_BASE_URL}/api/app-content`);
+    const payload = response.data.data;
+    setAppContentForm({
+      welcome_title: payload?.welcome_title || '',
+      welcome_description: payload?.welcome_description || '',
+      motivation_text: payload?.motivation_text || '',
+      motivation_quote: payload?.motivation_quote || '',
+    });
+  }
 
   async function fetchModules() {
     setIsLoadingModules(true);
@@ -52,7 +69,23 @@ function App() {
 
   useEffect(() => {
     fetchModules().catch(() => setMessage('Failed to load modules'));
+    fetchAppContent().catch(() => setMessage('Failed to load app content'));
   }, []);
+
+  async function handleSaveAppContent(event) {
+    event.preventDefault();
+    setMessage('');
+    setIsSavingAppContent(true);
+
+    try {
+      await axios.put(`${API_BASE_URL}/api/app-content`, appContentForm);
+      setMessage('App content updated');
+    } catch (error) {
+      setMessage(error?.response?.data?.message || 'Failed to update app content');
+    } finally {
+      setIsSavingAppContent(false);
+    }
+  }
 
   async function handleCreateModule(event) {
     event.preventDefault();
@@ -60,17 +93,54 @@ function App() {
     setIsSavingModule(true);
 
     try {
-      await axios.post(`${API_BASE_URL}/api/modules`, {
-        ...moduleForm,
-        order_index: Number(moduleForm.order_index),
-      });
+      const payload = {
+        title: moduleForm.title,
+        description: moduleForm.description,
+        prerequisites: moduleForm.prerequisites,
+      };
+
+      if (moduleForm.id) {
+        await axios.put(`${API_BASE_URL}/api/modules/${moduleForm.id}`, payload);
+      } else {
+        await axios.post(`${API_BASE_URL}/api/modules`, payload);
+      }
+
       setModuleForm(initialModuleForm);
       await fetchModules();
-      setMessage('Module created');
+      setMessage(moduleForm.id ? 'Module updated' : 'Module created');
     } catch (error) {
-      setMessage(error?.response?.data?.message || 'Failed to create module');
+      setMessage(error?.response?.data?.message || 'Failed to save module');
     } finally {
       setIsSavingModule(false);
+    }
+  }
+
+  function handleEditModule(moduleItem) {
+    setModuleForm({
+      id: moduleItem.id,
+      title: moduleItem.title,
+      description: moduleItem.description || '',
+      prerequisites: moduleItem.prerequisites || '',
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function handleDeleteModule(moduleId) {
+    const confirmed = window.confirm('Delete this module and all its lessons?');
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await axios.delete(`${API_BASE_URL}/api/modules/${moduleId}`);
+      setMessage('Module deleted');
+      await fetchModules();
+
+      if (moduleForm.id === moduleId) {
+        setModuleForm(initialModuleForm);
+      }
+    } catch (error) {
+      setMessage(error?.response?.data?.message || 'Failed to delete module');
     }
   }
 
@@ -93,9 +163,43 @@ function App() {
 
       {message && <div className="message">{message}</div>}
 
+      <section className="card">
+        <h2>App Home Content</h2>
+        <form className="form-grid" onSubmit={handleSaveAppContent}>
+          <input
+            required
+            placeholder="Welcome title"
+            value={appContentForm.welcome_title}
+            onChange={(e) => setAppContentForm({ ...appContentForm, welcome_title: e.target.value })}
+          />
+          <input
+            required
+            placeholder="Welcome description"
+            value={appContentForm.welcome_description}
+            onChange={(e) => setAppContentForm({ ...appContentForm, welcome_description: e.target.value })}
+          />
+          <input
+            required
+            placeholder="Motivation title"
+            value={appContentForm.motivation_text}
+            onChange={(e) => setAppContentForm({ ...appContentForm, motivation_text: e.target.value })}
+          />
+          <textarea
+            required
+            rows="3"
+            placeholder="Motivation quote"
+            value={appContentForm.motivation_quote}
+            onChange={(e) => setAppContentForm({ ...appContentForm, motivation_quote: e.target.value })}
+          />
+          <button type="submit" disabled={isSavingAppContent}>
+            {isSavingAppContent ? 'Saving...' : 'Save Home Content'}
+          </button>
+        </form>
+      </section>
+
       <div className="layout">
         <section className="card">
-          <h2>Create Module (Live)</h2>
+          <h2>{moduleForm.id ? 'Edit Module' : 'Create Module'}</h2>
           <form className="form-grid" onSubmit={handleCreateModule}>
             <input
               required
@@ -108,34 +212,32 @@ function App() {
               value={moduleForm.description}
               onChange={(e) => setModuleForm({ ...moduleForm, description: e.target.value })}
             />
-            <select
-              value={moduleForm.icon}
-              onChange={(e) => setModuleForm({ ...moduleForm, icon: e.target.value })}
-            >
-              {ICON_CHOICES.map((icon) => (
-                <option key={icon.value} value={icon.value}>
-                  {icon.emoji} {icon.label}
-                </option>
-              ))}
-            </select>
             <input
-              type="number"
-              placeholder="Order"
-              value={moduleForm.order_index}
-              onChange={(e) => setModuleForm({ ...moduleForm, order_index: e.target.value })}
+              placeholder="Prerequisites (comma separated)"
+              value={moduleForm.prerequisites}
+              onChange={(e) => setModuleForm({ ...moduleForm, prerequisites: e.target.value })}
             />
             <button type="submit" disabled={isSavingModule}>
-              {isSavingModule ? 'Saving...' : 'Create Module'}
+              {isSavingModule ? 'Saving...' : moduleForm.id ? 'Update Module' : 'Create Module'}
             </button>
+            {moduleForm.id ? (
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setModuleForm(initialModuleForm)}
+              >
+                Cancel Edit
+              </button>
+            ) : null}
           </form>
         </section>
 
         <section className="card">
-          <h2>How To Test</h2>
+          <h2>Notes</h2>
           <ol className="steps">
-            <li>Create a module here.</li>
-            <li>Open mobile app tab: Modules.</li>
-            <li>Confirm the module card appears.</li>
+            <li>Use prerequisites in comma format: `state, hooks, api`.</li>
+            <li>Home content updates are shown in mobile Home screen.</li>
+            <li>Modules list in mobile shows lesson count and total minutes.</li>
           </ol>
         </section>
       </div>
@@ -150,7 +252,10 @@ function App() {
                 <th>Icon</th>
                 <th>Title</th>
                 <th>Description</th>
-                <th>Order</th>
+                <th>Prerequisites</th>
+                <th>Lessons</th>
+                <th>Total Time</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -160,12 +265,22 @@ function App() {
                     <td>{getIconEmoji(module.icon)}</td>
                     <td>{module.title}</td>
                     <td>{module.description || 'No description'}</td>
-                    <td>{module.order_index}</td>
+                    <td>{module.prerequisites || '-'}</td>
+                    <td>{module.lesson_count}</td>
+                    <td>{module.total_read_time} min</td>
+                    <td className="actions">
+                      <button type="button" onClick={() => handleEditModule(module)}>
+                        Edit
+                      </button>
+                      <button type="button" className="danger" onClick={() => handleDeleteModule(module.id)}>
+                        Delete
+                      </button>
+                    </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan="4" className="empty">No modules yet. Create your first one above.</td>
+                  <td colSpan="8" className="empty">No modules yet. Create your first one above.</td>
                 </tr>
               )}
             </tbody>
