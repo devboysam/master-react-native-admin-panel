@@ -39,13 +39,6 @@ export default function Example() {
   return <Text>Hello React Native</Text>;
 }</code></pre>`;
 
-const initialAppContentForm = {
-  welcome_title: '',
-  welcome_description: '',
-  motivation_text: '',
-  motivation_quote: '',
-};
-
 function formatError(error, fallback) {
   if (error?.response?.data?.message) {
     return error.response.data.message;
@@ -134,7 +127,6 @@ function App() {
   const [lessons, setLessons] = useState([]);
   const [moduleForm, setModuleForm] = useState(initialModuleForm);
   const [lessonForm, setLessonForm] = useState(initialLessonForm);
-  const [appContentForm, setAppContentForm] = useState(initialAppContentForm);
   const [modulePrerequisiteInput, setModulePrerequisiteInput] = useState('');
   const [isModuleModalOpen, setIsModuleModalOpen] = useState(false);
   const [isLessonModalOpen, setIsLessonModalOpen] = useState(false);
@@ -142,7 +134,6 @@ function App() {
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [isSavingModule, setIsSavingModule] = useState(false);
   const [isSavingLesson, setIsSavingLesson] = useState(false);
-  const [isSavingAppContent, setIsSavingAppContent] = useState(false);
   const [apiHealth, setApiHealth] = useState('Unknown');
   const lessonPreviewRef = useRef(null);
 
@@ -168,17 +159,6 @@ function App() {
       hljs.highlightElement(block);
     });
   }, [isLessonModalOpen, lessonPreviewHtml]);
-
-  async function fetchAppContent() {
-    const response = await axios.get(`${API_BASE_URL}/api/app-content`);
-    const payload = response.data.data;
-    setAppContentForm({
-      welcome_title: payload?.welcome_title || '',
-      welcome_description: payload?.welcome_description || '',
-      motivation_text: payload?.motivation_text || '',
-      motivation_quote: payload?.motivation_quote || '',
-    });
-  }
 
   async function fetchModulesAndLessons() {
     const modulesResponse = await axios.get(`${API_BASE_URL}/api/modules`);
@@ -217,28 +197,14 @@ function App() {
       setMessage({ type: '', text: '' });
     }
 
-    const [appContentResult, contentResult] = await Promise.allSettled([
-      fetchAppContent(),
-      fetchModulesAndLessons(),
-    ]);
+    const contentResult = await Promise.allSettled([fetchModulesAndLessons()]);
+    const hasContentError = contentResult[0].status === 'rejected';
 
-    const hasAppError = appContentResult.status === 'rejected';
-    const hasContentError = contentResult.status === 'rejected';
-
-    if (hasAppError || hasContentError) {
+    if (hasContentError) {
       setApiHealth('Unavailable');
-      const reasons = [];
-
-      if (hasAppError) {
-        reasons.push(formatError(appContentResult.reason, 'Home content failed'));
-      }
-      if (hasContentError) {
-        reasons.push(formatError(contentResult.reason, 'Modules/Lessons failed'));
-      }
-
       setMessage({
         type: 'error',
-        text: `Backend sync issue: ${reasons.join(' | ')}`,
+        text: `Backend sync issue: ${formatError(contentResult[0].reason, 'Modules/Lessons failed')}`,
       });
     } else {
       setApiHealth('Connected');
@@ -424,21 +390,6 @@ function App() {
     }
   }
 
-  async function handleSaveAppContent(event) {
-    event.preventDefault();
-    setIsSavingAppContent(true);
-    setMessage({ type: '', text: '' });
-
-    try {
-      await axios.put(`${API_BASE_URL}/api/app-content`, appContentForm);
-      setMessage({ type: 'success', text: 'Home content updated' });
-    } catch (error) {
-      setMessage({ type: 'error', text: formatError(error, 'Failed to update home content') });
-    } finally {
-      setIsSavingAppContent(false);
-    }
-  }
-
   async function handleApiHealthCheck() {
     setMessage({ type: '', text: '' });
     try {
@@ -509,68 +460,24 @@ function App() {
               </article>
             </div>
 
-            <div className="split">
-              <section className="card">
-                <h3>App Home Content</h3>
-                <form className="form-grid" onSubmit={handleSaveAppContent}>
-                  <input
-                    required
-                    placeholder="Welcome title"
-                    value={appContentForm.welcome_title}
-                    onChange={(event) =>
-                      setAppContentForm({ ...appContentForm, welcome_title: event.target.value })
-                    }
-                  />
-                  <input
-                    required
-                    placeholder="Welcome description"
-                    value={appContentForm.welcome_description}
-                    onChange={(event) =>
-                      setAppContentForm({ ...appContentForm, welcome_description: event.target.value })
-                    }
-                  />
-                  <input
-                    required
-                    placeholder="Motivation title"
-                    value={appContentForm.motivation_text}
-                    onChange={(event) =>
-                      setAppContentForm({ ...appContentForm, motivation_text: event.target.value })
-                    }
-                  />
-                  <textarea
-                    required
-                    rows="4"
-                    placeholder="Motivation quote"
-                    value={appContentForm.motivation_quote}
-                    onChange={(event) =>
-                      setAppContentForm({ ...appContentForm, motivation_quote: event.target.value })
-                    }
-                  />
-                  <button type="submit" disabled={isSavingAppContent}>
-                    {isSavingAppContent ? 'Saving...' : 'Save Home Content'}
-                  </button>
-                </form>
-              </section>
-
-              <section className="card">
-                <h3>Latest Lessons</h3>
-                <ul className="list-clean">
-                  {latestLessons.length ? (
-                    latestLessons.map((lessonItem) => (
-                      <li key={lessonItem.id}>
-                        <div>
-                          <strong>{lessonItem.title}</strong>
-                          <p>{moduleMap[lessonItem.module_id]?.title || 'Unknown module'}</p>
-                        </div>
-                        <span>{lessonItem.read_time} min</span>
-                      </li>
-                    ))
-                  ) : (
-                    <li className="empty">No lessons created yet.</li>
-                  )}
-                </ul>
-              </section>
-            </div>
+            <section className="card">
+              <h3>Latest Lessons</h3>
+              <ul className="list-clean">
+                {latestLessons.length ? (
+                  latestLessons.map((lessonItem) => (
+                    <li key={lessonItem.id}>
+                      <div>
+                        <strong>{lessonItem.title}</strong>
+                        <p>{moduleMap[lessonItem.module_id]?.title || 'Unknown module'}</p>
+                      </div>
+                      <span>{lessonItem.read_time} min</span>
+                    </li>
+                  ))
+                ) : (
+                  <li className="empty">No lessons created yet.</li>
+                )}
+              </ul>
+            </section>
           </section>
         ) : null}
 
