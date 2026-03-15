@@ -506,6 +506,26 @@ th {
   font-weight: 700;
 }
 
+.image-preview {
+  display: grid;
+  gap: 8px;
+}
+
+.image-preview span {
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.image-preview img {
+  width: min(260px, 100%);
+  max-height: 140px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid #d3deeb;
+  background: #f5f9ff;
+}
+
 .full-span {
   grid-column: 1 / -1;
 }
@@ -550,6 +570,46 @@ th {
   white-space: pre-wrap;
   font-size: 0.82rem;
   line-height: 1.4;
+}
+
+.lesson-preview {
+  border: 1px solid #d6e1ee;
+  border-radius: 12px;
+  padding: 12px;
+  background: #fbfdff;
+}
+
+.lesson-preview h4 {
+  margin: 0 0 10px;
+  font-size: 0.96rem;
+}
+
+.lesson-preview-content {
+  border: 1px solid #e3e9f1;
+  border-radius: 10px;
+  padding: 12px;
+  background: #ffffff;
+  max-height: 300px;
+  overflow: auto;
+}
+
+.lesson-preview-content p,
+.lesson-preview-content ul,
+.lesson-preview-content ol,
+.lesson-preview-content pre {
+  margin-top: 0;
+}
+
+.lesson-preview-content img {
+  max-width: 100%;
+  border-radius: 8px;
+  border: 1px solid #d7e1ed;
+}
+
+.lesson-preview-content pre {
+  padding: 10px;
+  border-radius: 8px;
+  overflow-x: auto;
 }
 
 .module-icon-cell {

@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
+import DOMPurify from 'dompurify';
+import hljs from 'highlight.js';
+import 'highlight.js/styles/github.css';
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
   import.meta.env.VITE_API_URL ||
-  'https://master-react-native-backend-production.up.railway.app';
+  'http://localhost:5000';
 
 const NAV_ITEMS = ['Dashboard', 'Modules', 'Lessons', 'Settings'];
 
@@ -68,6 +71,63 @@ function isHttpUrl(value) {
   return typeof value === 'string' && /^https?:\/\//i.test(value.trim());
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function convertPlainTextToHtml(rawContent) {
+  const codeBlocks = [];
+
+  let html = String(rawContent || '').replace(/```(\w+)?\n([\s\S]*?)```/g, (_, language, code) => {
+    const token = `{{{CODE_BLOCK_${codeBlocks.length}}}}`;
+    codeBlocks.push({ language: language || '', code });
+    return token;
+  });
+
+  html = escapeHtml(html);
+
+  html = html.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g, (_, alt, src) => {
+    return `<img src="${src}" alt="${escapeHtml(alt)}" />`;
+  });
+
+  html = html.replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br />');
+  html = `<p>${html}</p>`;
+  html = html.replace(/<p>\s*({{{CODE_BLOCK_\d+}}})\s*<\/p>/g, '$1');
+
+  codeBlocks.forEach((block, index) => {
+    const token = `{{{CODE_BLOCK_${index}}}}`;
+    const languageClass = block.language ? `language-${block.language}` : '';
+    const renderedBlock = `<pre><code class="${languageClass}">${escapeHtml(block.code)}</code></pre>`;
+    html = html.replace(token, renderedBlock);
+  });
+
+  return html;
+}
+
+function buildLessonPreviewHtml(rawContent) {
+  const text = String(rawContent || '').trim();
+  if (!text) {
+    return '';
+  }
+
+  const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(text);
+  const candidate = looksLikeHtml ? text : convertPlainTextToHtml(text);
+
+  return DOMPurify.sanitize(candidate, {
+    ALLOWED_TAGS: [
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+      'p', 'br', 'strong', 'em', 'ul', 'ol', 'li',
+      'pre', 'code', 'blockquote', 'a', 'img', 'span',
+    ],
+    ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'title', 'class'],
+  });
+}
+
 function App() {
   const [activePage, setActivePage] = useState('Dashboard');
   const [modules, setModules] = useState([]);
@@ -84,6 +144,7 @@ function App() {
   const [isSavingLesson, setIsSavingLesson] = useState(false);
   const [isSavingAppContent, setIsSavingAppContent] = useState(false);
   const [apiHealth, setApiHealth] = useState('Unknown');
+  const lessonPreviewRef = useRef(null);
 
   const totalLessons = lessons.length;
   const totalMinutes = modules.reduce((sum, moduleItem) => sum + Number(moduleItem.total_read_time || 0), 0);
@@ -96,6 +157,17 @@ function App() {
   }, [modules]);
 
   const latestLessons = lessons.slice(0, 6);
+  const lessonPreviewHtml = useMemo(() => buildLessonPreviewHtml(lessonForm.content), [lessonForm.content]);
+
+  useEffect(() => {
+    if (!isLessonModalOpen || !lessonPreviewRef.current) {
+      return;
+    }
+
+    lessonPreviewRef.current.querySelectorAll('pre code').forEach((block) => {
+      hljs.highlightElement(block);
+    });
+  }, [isLessonModalOpen, lessonPreviewHtml]);
 
   async function fetchAppContent() {
     const response = await axios.get(`${API_BASE_URL}/api/app-content`);
@@ -706,6 +778,13 @@ function App() {
                 />
               </label>
 
+              {isHttpUrl(moduleForm.image_url) ? (
+                <div className="image-preview">
+                  <span>Image Preview</span>
+                  <img src={moduleForm.image_url.trim()} alt="Module preview" />
+                </div>
+              ) : null}
+
               <div className="chip-input-wrap">
                 <label>Prerequisites</label>
                 <div className="chip-input-row">
@@ -841,6 +920,19 @@ function App() {
                   onChange={(event) => setLessonForm({ ...lessonForm, content: event.target.value })}
                 />
               </label>
+
+              <section className="lesson-preview">
+                <h4>Live Preview</h4>
+                {lessonPreviewHtml ? (
+                  <div
+                    ref={lessonPreviewRef}
+                    className="lesson-preview-content"
+                    dangerouslySetInnerHTML={{ __html: lessonPreviewHtml }}
+                  />
+                ) : (
+                  <p className="empty">Preview appears here when you add lesson content.</p>
+                )}
+              </section>
 
               <button type="submit" className="compact-btn" disabled={isSavingLesson}>
                 {isSavingLesson ? 'Saving...' : lessonForm.id ? 'Update Lesson' : 'Create Lesson'}
