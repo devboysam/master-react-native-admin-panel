@@ -528,6 +528,18 @@ th {
   color: #344766;
 }
 
+.syntax-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.syntax-actions .compact-btn {
+  padding: 6px 10px;
+  font-size: 0.8rem;
+}
+
 .syntax-help pre {
   margin: 0 0 10px;
   padding: 10px;
@@ -538,6 +550,43 @@ th {
   white-space: pre-wrap;
   font-size: 0.82rem;
   line-height: 1.4;
+}
+
+.module-icon-cell {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.module-icon-cell img {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid #d5deea;
+}
+
+.module-icon-cell small {
+  color: #627086;
+}
+
+.table-prereq-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.table-prereq-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #b8dfff;
+  background: #e8f6ff;
+  color: #17456f;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 0.78rem;
+  font-weight: 600;
 }
 
 @media (max-width: 980px) {

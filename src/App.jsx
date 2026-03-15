@@ -14,6 +14,7 @@ const initialModuleForm = {
   description: '',
   prerequisites: [],
   icon: 'book',
+  image_url: '',
 };
 
 const initialLessonForm = {
@@ -61,6 +62,10 @@ function parsePrerequisites(value) {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function isHttpUrl(value) {
+  return typeof value === 'string' && /^https?:\/\//i.test(value.trim());
 }
 
 function App() {
@@ -184,15 +189,25 @@ function App() {
   }
 
   function openEditModuleModal(moduleItem) {
+    const iconValue = moduleItem.icon || 'book';
+    const iconIsUrl = isHttpUrl(iconValue);
     setModuleForm({
       id: moduleItem.id,
       title: moduleItem.title || '',
       description: moduleItem.description || '',
       prerequisites: parsePrerequisites(moduleItem.prerequisites),
-      icon: moduleItem.icon || 'book',
+      icon: iconIsUrl ? 'book' : iconValue,
+      image_url: iconIsUrl ? iconValue : '',
     });
     setModulePrerequisiteInput('');
     setIsModuleModalOpen(true);
+  }
+
+  function appendLessonSnippet(snippet) {
+    setLessonForm((prev) => ({
+      ...prev,
+      content: prev.content ? `${prev.content}\n\n${snippet}` : snippet,
+    }));
   }
 
   function addPrerequisiteChip(value) {
@@ -230,7 +245,7 @@ function App() {
         title: moduleForm.title,
         description: moduleForm.description,
         prerequisites: moduleForm.prerequisites.join(', '),
-        icon: moduleForm.icon,
+        icon: moduleForm.image_url?.trim() || moduleForm.icon,
       };
 
       if (moduleForm.id) {
@@ -513,8 +528,27 @@ function App() {
                         <tr key={moduleItem.id}>
                           <td>{moduleItem.title}</td>
                           <td>{moduleItem.description || '-'}</td>
-                          <td>{moduleItem.icon || '-'}</td>
-                          <td>{moduleItem.prerequisites || '-'}</td>
+                          <td>
+                            {isHttpUrl(moduleItem.icon) ? (
+                              <div className="module-icon-cell">
+                                <img src={moduleItem.icon} alt={moduleItem.title} />
+                                <small>Image</small>
+                              </div>
+                            ) : (
+                              moduleItem.icon || '-'
+                            )}
+                          </td>
+                          <td>
+                            {parsePrerequisites(moduleItem.prerequisites).length ? (
+                              <div className="table-prereq-list">
+                                {parsePrerequisites(moduleItem.prerequisites).map((item) => (
+                                  <span key={`${moduleItem.id}-${item}`} className="table-prereq-chip">{item}</span>
+                                ))}
+                              </div>
+                            ) : (
+                              '-'
+                            )}
+                          </td>
                           <td>{moduleItem.lesson_count}</td>
                           <td>{moduleItem.total_read_time} min</td>
                           <td className="actions">
@@ -655,11 +689,20 @@ function App() {
               </label>
 
               <label className="field-row">
-                <span>Module Icon or Image URL</span>
+                <span>Module Icon (name or emoji)</span>
                 <input
-                  placeholder="Example: book OR https://.../icon.png"
+                  placeholder="Example: book, code, react, ⚛️"
                   value={moduleForm.icon}
                   onChange={(event) => setModuleForm({ ...moduleForm, icon: event.target.value })}
+                />
+              </label>
+
+              <label className="field-row">
+                <span>Module Image URL (optional)</span>
+                <input
+                  placeholder="https://.../module-image.png"
+                  value={moduleForm.image_url}
+                  onChange={(event) => setModuleForm({ ...moduleForm, image_url: event.target.value })}
                 />
               </label>
 
@@ -769,18 +812,20 @@ function App() {
               </label>
 
               <details className="syntax-help">
-                <summary>How to add syntax highlighted content</summary>
-                <p>Use basic HTML for headings and bold text. Wrap code in pre + code blocks.</p>
+                <summary>Formatting Guide: headings, paragraphs, bold, code snippets</summary>
+                <p>You can write plain text, or use HTML tags like h2, p, strong, ul/li, and pre/code.</p>
+                <div className="syntax-actions">
+                  <button type="button" className="ghost compact-btn" onClick={() => appendLessonSnippet('<h2>Section Heading</h2>')}>+ Heading</button>
+                  <button type="button" className="ghost compact-btn" onClick={() => appendLessonSnippet('<p>Your paragraph text goes here.</p>')}>+ Paragraph</button>
+                  <button type="button" className="ghost compact-btn" onClick={() => appendLessonSnippet('<strong>Important bold text</strong>')}>+ Bold</button>
+                  <button type="button" className="ghost compact-btn" onClick={() => appendLessonSnippet('<ul>\n  <li>Point one</li>\n  <li>Point two</li>\n</ul>')}>+ List</button>
+                  <button type="button" className="ghost compact-btn" onClick={() => appendLessonSnippet('<pre><code>// Code here\nconst x = 1;\n</code></pre>')}>+ Code Block</button>
+                </div>
                 <pre>{lessonSyntaxTemplate}</pre>
                 <button
                   type="button"
                   className="secondary compact-btn"
-                  onClick={() =>
-                    setLessonForm((prev) => ({
-                      ...prev,
-                      content: prev.content ? `${prev.content}\n\n${lessonSyntaxTemplate}` : lessonSyntaxTemplate,
-                    }))
-                  }
+                  onClick={() => appendLessonSnippet(lessonSyntaxTemplate)}
                 >
                   Insert Syntax Template
                 </button>
