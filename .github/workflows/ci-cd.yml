@@ -55,7 +55,8 @@ jobs:
           server: ${{ secrets.HOSTINGER_FTP_SERVER }}
           username: ${{ secrets.HOSTINGER_FTP_USERNAME }}
           password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
-          protocol: ftps
+          protocol: ftp
           local-dir: dist/
           server-dir: /public_html/
           dangerous-clean-slate: false
+          log-level: verbose
