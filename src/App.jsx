@@ -719,11 +719,20 @@ function App() {
 
               <label className="field-row">
                 <span>Module Background Color (hex)</span>
-                <input
-                  placeholder="#EAF2FF"
-                  value={moduleForm.background_color}
-                  onChange={(event) => setModuleForm({ ...moduleForm, background_color: event.target.value })}
-                />
+                <div className="color-input-row">
+                  <input
+                    type="color"
+                    className="color-picker"
+                    value={normalizeHexColor(moduleForm.background_color) || '#EAF2FF'}
+                    onChange={(event) => setModuleForm({ ...moduleForm, background_color: event.target.value })}
+                    aria-label="Pick module background color"
+                  />
+                  <input
+                    placeholder="#EAF2FF"
+                    value={moduleForm.background_color}
+                    onChange={(event) => setModuleForm({ ...moduleForm, background_color: event.target.value })}
+                  />
+                </div>
               </label>
 
               <div className="module-bg-preview">

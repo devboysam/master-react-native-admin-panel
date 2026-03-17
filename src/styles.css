@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
+
 :root {
   --bg: #f3f5f8;
   --panel: #ffffff;
@@ -504,6 +506,18 @@ th {
   font-size: 0.85rem;
   color: var(--muted);
   font-weight: 700;
+}
+
+.color-input-row {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 8px;
+}
+
+.color-picker {
+  min-height: 42px;
+  padding: 2px;
+  border-radius: 10px;
 }
 
 .image-preview {
