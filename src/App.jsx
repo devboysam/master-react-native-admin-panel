@@ -18,6 +18,7 @@ const initialModuleForm = {
   prerequisites: [],
   icon: 'book',
   image_url: '',
+  background_color: '#EAF2FF',
 };
 
 const initialLessonForm = {
@@ -62,6 +63,16 @@ function parsePrerequisites(value) {
 
 function isHttpUrl(value) {
   return typeof value === 'string' && /^https?:\/\//i.test(value.trim());
+}
+
+function normalizeHexColor(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return null;
+  }
+
+  const withHash = raw.startsWith('#') ? raw : `#${raw}`;
+  return /^#[0-9A-Fa-f]{6}$/.test(withHash) ? withHash.toUpperCase() : null;
 }
 
 function escapeHtml(value) {
@@ -229,6 +240,7 @@ function App() {
   function openEditModuleModal(moduleItem) {
     const iconValue = moduleItem.icon || 'book';
     const iconIsUrl = isHttpUrl(iconValue);
+    const normalizedBgColor = normalizeHexColor(moduleItem.background_color) || '#EAF2FF';
     setModuleForm({
       id: moduleItem.id,
       title: moduleItem.title || '',
@@ -236,6 +248,7 @@ function App() {
       prerequisites: parsePrerequisites(moduleItem.prerequisites),
       icon: iconIsUrl ? 'book' : iconValue,
       image_url: iconIsUrl ? iconValue : '',
+      background_color: normalizedBgColor,
     });
     setModulePrerequisiteInput('');
     setIsModuleModalOpen(true);
@@ -279,11 +292,19 @@ function App() {
     setMessage({ type: '', text: '' });
 
     try {
+      const normalizedBgColor = normalizeHexColor(moduleForm.background_color);
+      if (!normalizedBgColor) {
+        setMessage({ type: 'error', text: 'Background color must be a 6-digit hex value like #EAF2FF' });
+        setIsSavingModule(false);
+        return;
+      }
+
       const payload = {
         title: moduleForm.title,
         description: moduleForm.description,
         prerequisites: moduleForm.prerequisites.join(', '),
         icon: moduleForm.image_url?.trim() || moduleForm.icon,
+        background_color: normalizedBgColor,
       };
 
       if (moduleForm.id) {
@@ -495,6 +516,7 @@ function App() {
                       <th>Title</th>
                       <th>Description</th>
                       <th>Icon / Image</th>
+                      <th>BG Color</th>
                       <th>Prerequisites</th>
                       <th>Lessons</th>
                       <th>Total Time</th>
@@ -516,6 +538,16 @@ function App() {
                             ) : (
                               moduleItem.icon || '-'
                             )}
+                          </td>
+                          <td>
+                            <div className="module-bg-cell">
+                              <span
+                                className="module-bg-swatch"
+                                style={{ backgroundColor: normalizeHexColor(moduleItem.background_color) || '#EAF2FF' }}
+                                aria-hidden="true"
+                              />
+                              <small>{normalizeHexColor(moduleItem.background_color) || '#EAF2FF'}</small>
+                            </div>
                           </td>
                           <td>
                             {parsePrerequisites(moduleItem.prerequisites).length ? (
@@ -542,7 +574,7 @@ function App() {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan="7" className="empty">
+                        <td colSpan="8" className="empty">
                           No modules yet.
                         </td>
                       </tr>
@@ -684,6 +716,25 @@ function App() {
                   onChange={(event) => setModuleForm({ ...moduleForm, image_url: event.target.value })}
                 />
               </label>
+
+              <label className="field-row">
+                <span>Module Background Color (hex)</span>
+                <input
+                  placeholder="#EAF2FF"
+                  value={moduleForm.background_color}
+                  onChange={(event) => setModuleForm({ ...moduleForm, background_color: event.target.value })}
+                />
+              </label>
+
+              <div className="module-bg-preview">
+                <span>Background Preview</span>
+                <div
+                  className="module-bg-preview-box"
+                  style={{ backgroundColor: normalizeHexColor(moduleForm.background_color) || '#EAF2FF' }}
+                >
+                  {normalizeHexColor(moduleForm.background_color) || '#EAF2FF'}
+                </div>
+              </div>
 
               {isHttpUrl(moduleForm.image_url) ? (
                 <div className="image-preview">

@@ -631,6 +631,46 @@ th {
   color: #627086;
 }
 
+.module-bg-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.module-bg-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  border: 1px solid #c6d3e3;
+}
+
+.module-bg-cell small {
+  color: #4b5a70;
+  font-weight: 700;
+}
+
+.module-bg-preview {
+  display: grid;
+  gap: 8px;
+}
+
+.module-bg-preview span {
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.module-bg-preview-box {
+  min-height: 42px;
+  border: 1px solid #ccd8e6;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #2b3b52;
+}
+
 .table-prereq-list {
   display: flex;
   flex-wrap: wrap;
