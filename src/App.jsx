@@ -7,7 +7,7 @@ import 'highlight.js/styles/github.css';
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
   import.meta.env.VITE_API_URL ||
-  'https://master-react-native-backend-production.up.railway.app';
+  'https://api.masterreactnative.dev';
 
 const NAV_ITEMS = ['Dashboard', 'Modules', 'Lessons', 'Settings'];
 
