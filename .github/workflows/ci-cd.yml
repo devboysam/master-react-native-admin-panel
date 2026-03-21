@@ -38,7 +38,7 @@ jobs:
           path: dist
 
   deploy:
-    name: Deploy To Hostinger FTP
+    name: Deploy To DigitalOcean
     runs-on: ubuntu-latest
     needs: build
 
@@ -49,14 +49,40 @@ jobs:
           name: build
           path: dist
 
-      - name: Deploy via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.HOSTINGER_FTP_SERVER }}
-          username: ${{ secrets.HOSTINGER_FTP_USERNAME }}
-          password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
-          protocol: ftp
-          local-dir: dist/
-          server-dir: /public_html/
-          dangerous-clean-slate: false
-          log-level: verbose
+      - name: Validate required deploy secrets
+        run: |
+          missing=0
+          for key in DO_SSH_HOST DO_SSH_USER DO_SSH_PRIVATE_KEY; do
+            if [ -z "${!key}" ]; then
+              echo "Missing required secret: $key"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 1 ]; then
+            exit 1
+          fi
+        env:
+          DO_SSH_HOST: ${{ secrets.DO_SSH_HOST }}
+          DO_SSH_USER: ${{ secrets.DO_SSH_USER }}
+          DO_SSH_PRIVATE_KEY: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf "%s" "${{ secrets.DO_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "${{ secrets.DO_SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy via rsync over SSH
+        env:
+          DEPLOY_PATH: ${{ secrets.DO_DEPLOY_PATH }}
+          SSH_PORT: ${{ secrets.DO_SSH_PORT }}
+        run: |
+          target_path="${DEPLOY_PATH:-/var/www/masterreactnative.dev}"
+          target_port="${SSH_PORT:-22}"
+
+          ssh -p "$target_port" "${{ secrets.DO_SSH_USER }}@${{ secrets.DO_SSH_HOST }}" "mkdir -p '$target_path'"
+
+          rsync -az --delete \
+            -e "ssh -p $target_port" \
+            dist/ "${{ secrets.DO_SSH_USER }}@${{ secrets.DO_SSH_HOST }}:$target_path/"
