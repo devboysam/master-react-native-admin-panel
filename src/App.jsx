@@ -16,8 +16,7 @@ const initialModuleForm = {
   title: '',
   description: '',
   prerequisites: [],
-  icon: 'book',
-  image_url: '',
+  order_index: 0,
   background_color: '#EAF2FF',
 };
 
@@ -59,10 +58,6 @@ function parsePrerequisites(value) {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
-}
-
-function isHttpUrl(value) {
-  return typeof value === 'string' && /^https?:\/\//i.test(value.trim());
 }
 
 function normalizeHexColor(value) {
@@ -238,16 +233,13 @@ function App() {
   }
 
   function openEditModuleModal(moduleItem) {
-    const iconValue = moduleItem.icon || 'book';
-    const iconIsUrl = isHttpUrl(iconValue);
     const normalizedBgColor = normalizeHexColor(moduleItem.background_color) || '#EAF2FF';
     setModuleForm({
       id: moduleItem.id,
       title: moduleItem.title || '',
       description: moduleItem.description || '',
       prerequisites: parsePrerequisites(moduleItem.prerequisites),
-      icon: iconIsUrl ? 'book' : iconValue,
-      image_url: iconIsUrl ? iconValue : '',
+      order_index: Number(moduleItem.order_index) || 0,
       background_color: normalizedBgColor,
     });
     setModulePrerequisiteInput('');
@@ -303,7 +295,7 @@ function App() {
         title: moduleForm.title,
         description: moduleForm.description,
         prerequisites: moduleForm.prerequisites.join(', '),
-        icon: moduleForm.image_url?.trim() || moduleForm.icon,
+        order_index: Number(moduleForm.order_index) || 0,
         background_color: normalizedBgColor,
       };
 
@@ -513,9 +505,9 @@ function App() {
                 <table>
                   <thead>
                     <tr>
+                      <th>#</th>
                       <th>Title</th>
                       <th>Description</th>
-                      <th>Icon / Image</th>
                       <th>BG Color</th>
                       <th>Prerequisites</th>
                       <th>Lessons</th>
@@ -525,20 +517,11 @@ function App() {
                   </thead>
                   <tbody>
                     {modules.length ? (
-                      modules.map((moduleItem) => (
+                      modules.map((moduleItem, index) => (
                         <tr key={moduleItem.id}>
+                          <td>{index + 1}</td>
                           <td>{moduleItem.title}</td>
                           <td>{moduleItem.description || '-'}</td>
-                          <td>
-                            {isHttpUrl(moduleItem.icon) ? (
-                              <div className="module-icon-cell">
-                                <img src={moduleItem.icon} alt={moduleItem.title} />
-                                <small>Image</small>
-                              </div>
-                            ) : (
-                              moduleItem.icon || '-'
-                            )}
-                          </td>
                           <td>
                             <div className="module-bg-cell">
                               <span
@@ -700,24 +683,6 @@ function App() {
               </label>
 
               <label className="field-row">
-                <span>Module Icon (name or emoji)</span>
-                <input
-                  placeholder="Example: book, code, react, ⚛️"
-                  value={moduleForm.icon}
-                  onChange={(event) => setModuleForm({ ...moduleForm, icon: event.target.value })}
-                />
-              </label>
-
-              <label className="field-row">
-                <span>Module Image URL (optional)</span>
-                <input
-                  placeholder="https://.../module-image.png"
-                  value={moduleForm.image_url}
-                  onChange={(event) => setModuleForm({ ...moduleForm, image_url: event.target.value })}
-                />
-              </label>
-
-              <label className="field-row">
                 <span>Module Background Color (hex)</span>
                 <div className="color-input-row">
                   <input
@@ -744,13 +709,6 @@ function App() {
                   {normalizeHexColor(moduleForm.background_color) || '#EAF2FF'}
                 </div>
               </div>
-
-              {isHttpUrl(moduleForm.image_url) ? (
-                <div className="image-preview">
-                  <span>Image Preview</span>
-                  <img src={moduleForm.image_url.trim()} alt="Module preview" />
-                </div>
-              ) : null}
 
               <div className="chip-input-wrap">
                 <label>Prerequisites</label>
