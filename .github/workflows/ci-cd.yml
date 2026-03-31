@@ -23,19 +23,21 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: package-lock.json
+          cache-dependency-path: admin-panel/package-lock.json
 
       - name: Install dependencies
+        working-directory: admin-panel
         run: npm ci
 
       - name: Build project
+        working-directory: admin-panel
         run: npm run build
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: build
-          path: dist
+          path: admin-panel/dist
 
   deploy:
     name: Deploy To DigitalOcean
@@ -58,8 +60,8 @@ jobs:
               missing=1
             fi
           done
-          if [ -z "$DO_SSH_PRIVATE_KEY" ] && [ -z "$DO_SSH_PRIVATE_KEY_BASE64" ]; then
-            echo "Missing required secret: set DO_SSH_PRIVATE_KEY or DO_SSH_PRIVATE_KEY_BASE64"
+          if [ -z "$DO_SSH_PRIVATE_KEY" ]; then
+            echo "Missing required secret: DO_SSH_PRIVATE_KEY"
             missing=1
           fi
           if [ "$missing" -eq 1 ]; then
@@ -69,32 +71,47 @@ jobs:
           DO_SSH_HOST: ${{ secrets.DO_SSH_HOST }}
           DO_SSH_USER: ${{ secrets.DO_SSH_USER }}
           DO_SSH_PRIVATE_KEY: ${{ secrets.DO_SSH_PRIVATE_KEY }}
-          DO_SSH_PRIVATE_KEY_BASE64: ${{ secrets.DO_SSH_PRIVATE_KEY_BASE64 }}
 
       - name: Setup SSH key
         run: |
           mkdir -p ~/.ssh
 
           raw_key="${{ secrets.DO_SSH_PRIVATE_KEY }}"
-          raw_key_b64="${{ secrets.DO_SSH_PRIVATE_KEY_BASE64 }}"
+          tmp_decoded="$(mktemp)"
 
-          # Prefer base64 secret when provided (most reliable for CI secret storage).
-          if [ -n "$raw_key_b64" ]; then
-            printf "%s" "$raw_key_b64" | base64 --decode | tr -d '\r' > ~/.ssh/do_deploy_key
+          # Reset key file each run.
+          : > ~/.ssh/do_deploy_key
+
+          if printf "%s" "$raw_key" | grep -q "BEGIN OPENSSH PRIVATE KEY"; then
+            # Support raw multiline OpenSSH key in DO_SSH_PRIVATE_KEY.
+            printf "%s" "$raw_key" | tr -d '\r' > ~/.ssh/do_deploy_key
           elif printf "%s" "$raw_key" | grep -q '\\n'; then
             # Support escaped "\\n" one-line secrets.
             printf "%b" "$raw_key" | tr -d '\r' > ~/.ssh/do_deploy_key
+          # If DO_SSH_PRIVATE_KEY contains base64 text, decode it automatically.
+          elif [ -n "$raw_key" ]; then
+            sanitized_raw="$(printf "%s" "$raw_key" | tr -d '\r\n\t ')"
+            if printf "%s" "$sanitized_raw" | base64 --decode 2>/dev/null | tr -d '\r' > "$tmp_decoded" && grep -q "BEGIN OPENSSH PRIVATE KEY" "$tmp_decoded"; then
+              cat "$tmp_decoded" > ~/.ssh/do_deploy_key
+            elif printf "%s" "$sanitized_raw" | openssl base64 -d -A 2>/dev/null | tr -d '\r' > "$tmp_decoded" && grep -q "BEGIN OPENSSH PRIVATE KEY" "$tmp_decoded"; then
+              cat "$tmp_decoded" > ~/.ssh/do_deploy_key
+            else
+              # Fall back to raw value (final validator below will reject malformed keys).
+              printf "%s" "$raw_key" | tr -d '\r' > ~/.ssh/do_deploy_key
+            fi
           else
-            # Support true multiline secrets.
-            printf "%s" "$raw_key" | tr -d '\r' > ~/.ssh/do_deploy_key
+            echo "DO_SSH_PRIVATE_KEY is empty."
+            exit 1
           fi
+
+          rm -f "$tmp_decoded"
 
           chmod 600 ~/.ssh/do_deploy_key
 
           # Fail early if the private key is malformed or wrong.
           if ! ssh-keygen -y -f ~/.ssh/do_deploy_key > /dev/null 2>&1; then
             echo "Invalid DO_SSH_PRIVATE_KEY format."
-            echo "Expected full OpenSSH private key with BEGIN/END lines."
+            echo "Expected a valid OpenSSH private key (raw multiline, escaped \\n, or base64)."
             exit 1
           fi
 
