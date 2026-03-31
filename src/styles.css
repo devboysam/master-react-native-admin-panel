@@ -224,6 +224,52 @@ body {
   margin-bottom: 12px;
 }
 
+.list-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.list-tab {
+  border: 1px solid #c9d6e5;
+  border-radius: 999px;
+  padding: 6px 11px;
+  background: #f5f8fc;
+  color: #36485f;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.list-tab:hover {
+  background: #e9f0f8;
+}
+
+.list-tab.active {
+  border-color: #4fb5ad;
+  background: #dff5f3;
+  color: #0f5d56;
+}
+
+.list-controls {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) 230px auto;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.lesson-list-controls {
+  grid-template-columns: minmax(220px, 1fr) 200px 190px auto;
+}
+
+.list-summary {
+  margin: 0 0 12px;
+  color: #5a6c84;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -754,6 +800,11 @@ th {
   .section-head {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .list-controls,
+  .lesson-list-controls {
+    grid-template-columns: 1fr;
   }
 
   .modal-backdrop {

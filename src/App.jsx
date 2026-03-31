@@ -131,6 +131,13 @@ function App() {
   const [activePage, setActivePage] = useState('Dashboard');
   const [modules, setModules] = useState([]);
   const [lessons, setLessons] = useState([]);
+  const [moduleQuery, setModuleQuery] = useState('');
+  const [moduleVisibility, setModuleVisibility] = useState('all');
+  const [moduleSort, setModuleSort] = useState('order-asc');
+  const [lessonQuery, setLessonQuery] = useState('');
+  const [lessonModuleFilter, setLessonModuleFilter] = useState('all');
+  const [lessonDurationFilter, setLessonDurationFilter] = useState('all');
+  const [lessonSort, setLessonSort] = useState('module-asc');
   const [moduleForm, setModuleForm] = useState(initialModuleForm);
   const [lessonForm, setLessonForm] = useState(initialLessonForm);
   const [modulePrerequisiteInput, setModulePrerequisiteInput] = useState('');
@@ -155,6 +162,112 @@ function App() {
 
   const latestLessons = lessons.slice(0, 6);
   const lessonPreviewHtml = useMemo(() => buildLessonPreviewHtml(lessonForm.content), [lessonForm.content]);
+
+  const moduleStats = useMemo(() => {
+    const withLessons = modules.filter((moduleItem) => Number(moduleItem.lesson_count) > 0).length;
+    return {
+      all: modules.length,
+      withLessons,
+      empty: modules.length - withLessons,
+    };
+  }, [modules]);
+
+  const filteredModules = useMemo(() => {
+    const query = moduleQuery.trim().toLowerCase();
+
+    const rows = modules.filter((moduleItem) => {
+      const prerequisites = parsePrerequisites(moduleItem.prerequisites).join(' ').toLowerCase();
+      const searchable = [moduleItem.title, moduleItem.description, prerequisites].join(' ').toLowerCase();
+
+      if (query && !searchable.includes(query)) {
+        return false;
+      }
+
+      if (moduleVisibility === 'with-lessons') {
+        return Number(moduleItem.lesson_count) > 0;
+      }
+
+      if (moduleVisibility === 'empty') {
+        return Number(moduleItem.lesson_count) === 0;
+      }
+
+      return true;
+    });
+
+    const sortedRows = [...rows].sort((a, b) => {
+      if (moduleSort === 'title-asc') {
+        return String(a.title || '').localeCompare(String(b.title || ''));
+      }
+      if (moduleSort === 'title-desc') {
+        return String(b.title || '').localeCompare(String(a.title || ''));
+      }
+      if (moduleSort === 'lessons-desc') {
+        return Number(b.lesson_count || 0) - Number(a.lesson_count || 0);
+      }
+      if (moduleSort === 'time-desc') {
+        return Number(b.total_read_time || 0) - Number(a.total_read_time || 0);
+      }
+
+      return Number(a.order_index || 0) - Number(b.order_index || 0);
+    });
+
+    return sortedRows;
+  }, [modules, moduleQuery, moduleVisibility, moduleSort]);
+
+  const lessonStats = useMemo(() => {
+    const short = lessons.filter((lessonItem) => Number(lessonItem.read_time || 0) <= 5).length;
+    return {
+      all: lessons.length,
+      short,
+      long: lessons.length - short,
+    };
+  }, [lessons]);
+
+  const filteredLessons = useMemo(() => {
+    const query = lessonQuery.trim().toLowerCase();
+
+    const rows = lessons.filter((lessonItem) => {
+      const moduleTitle = moduleMap[lessonItem.module_id]?.title || '';
+      const searchable = [lessonItem.title, lessonItem.description, lessonItem.content, moduleTitle].join(' ').toLowerCase();
+
+      if (query && !searchable.includes(query)) {
+        return false;
+      }
+
+      if (lessonModuleFilter !== 'all' && Number(lessonItem.module_id) !== Number(lessonModuleFilter)) {
+        return false;
+      }
+
+      if (lessonDurationFilter === 'short') {
+        return Number(lessonItem.read_time || 0) <= 5;
+      }
+
+      if (lessonDurationFilter === 'long') {
+        return Number(lessonItem.read_time || 0) > 5;
+      }
+
+      return true;
+    });
+
+    const sortedRows = [...rows].sort((a, b) => {
+      if (lessonSort === 'title-asc') {
+        return String(a.title || '').localeCompare(String(b.title || ''));
+      }
+      if (lessonSort === 'time-desc') {
+        return Number(b.read_time || 0) - Number(a.read_time || 0);
+      }
+      if (lessonSort === 'time-asc') {
+        return Number(a.read_time || 0) - Number(b.read_time || 0);
+      }
+
+      if (Number(a.module_id || 0) !== Number(b.module_id || 0)) {
+        return Number(a.module_id || 0) - Number(b.module_id || 0);
+      }
+      return String(a.title || '').localeCompare(String(b.title || ''));
+    });
+
+    return sortedRows;
+  }, [lessons, lessonQuery, lessonModuleFilter, lessonDurationFilter, lessonSort, moduleMap]);
 
   useEffect(() => {
     if (!isLessonModalOpen || !lessonPreviewRef.current) {
@@ -225,6 +338,17 @@ function App() {
   useEffect(() => {
     refreshAllData(false);
   }, []);
+
+  useEffect(() => {
+    if (lessonModuleFilter === 'all') {
+      return;
+    }
+
+    const exists = modules.some((moduleItem) => Number(moduleItem.id) === Number(lessonModuleFilter));
+    if (!exists) {
+      setLessonModuleFilter('all');
+    }
+  }, [modules, lessonModuleFilter]);
 
   function openCreateModuleModal() {
     setModuleForm(initialModuleForm);
@@ -335,7 +459,10 @@ function App() {
   }
 
   function openCreateLessonModal() {
-    setLessonForm(initialLessonForm);
+    setLessonForm({
+      ...initialLessonForm,
+      module_id: lessonModuleFilter !== 'all' ? String(lessonModuleFilter) : '',
+    });
     setIsLessonModalOpen(true);
   }
 
@@ -501,6 +628,59 @@ function App() {
                 <h3>All Modules</h3>
                 <button type="button" className="compact-btn" onClick={openCreateModuleModal}>Create Module</button>
               </div>
+
+              <div className="list-tabs" role="tablist" aria-label="Module visibility">
+                <button
+                  type="button"
+                  className={`list-tab ${moduleVisibility === 'all' ? 'active' : ''}`}
+                  onClick={() => setModuleVisibility('all')}
+                >
+                  All ({moduleStats.all})
+                </button>
+                <button
+                  type="button"
+                  className={`list-tab ${moduleVisibility === 'with-lessons' ? 'active' : ''}`}
+                  onClick={() => setModuleVisibility('with-lessons')}
+                >
+                  With Lessons ({moduleStats.withLessons})
+                </button>
+                <button
+                  type="button"
+                  className={`list-tab ${moduleVisibility === 'empty' ? 'active' : ''}`}
+                  onClick={() => setModuleVisibility('empty')}
+                >
+                  Empty ({moduleStats.empty})
+                </button>
+              </div>
+
+              <div className="list-controls">
+                <input
+                  placeholder="Search modules by title, description, prerequisites"
+                  value={moduleQuery}
+                  onChange={(event) => setModuleQuery(event.target.value)}
+                />
+                <select value={moduleSort} onChange={(event) => setModuleSort(event.target.value)}>
+                  <option value="order-asc">Sort: Module Order</option>
+                  <option value="title-asc">Sort: Title A-Z</option>
+                  <option value="title-desc">Sort: Title Z-A</option>
+                  <option value="lessons-desc">Sort: Most Lessons</option>
+                  <option value="time-desc">Sort: Most Total Time</option>
+                </select>
+                <button
+                  type="button"
+                  className="ghost compact-btn"
+                  onClick={() => {
+                    setModuleQuery('');
+                    setModuleVisibility('all');
+                    setModuleSort('order-asc');
+                  }}
+                >
+                  Reset
+                </button>
+              </div>
+
+              <p className="list-summary">Showing {filteredModules.length} of {modules.length} modules</p>
+
               <div className="table-wrapper">
                 <table>
                   <thead>
@@ -516,8 +696,8 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {modules.length ? (
-                      modules.map((moduleItem, index) => (
+                    {filteredModules.length ? (
+                      filteredModules.map((moduleItem, index) => (
                         <tr key={moduleItem.id}>
                           <td>{index + 1}</td>
                           <td>{moduleItem.title}</td>
@@ -558,7 +738,7 @@ function App() {
                     ) : (
                       <tr>
                         <td colSpan="8" className="empty">
-                          No modules yet.
+                          {modules.length ? 'No modules match your filters.' : 'No modules yet.'}
                         </td>
                       </tr>
                     )}
@@ -576,6 +756,67 @@ function App() {
                 <h3>All Lessons</h3>
                 <button type="button" className="compact-btn" onClick={openCreateLessonModal}>Create Lesson</button>
               </div>
+
+              <div className="list-tabs" role="tablist" aria-label="Lesson duration">
+                <button
+                  type="button"
+                  className={`list-tab ${lessonDurationFilter === 'all' ? 'active' : ''}`}
+                  onClick={() => setLessonDurationFilter('all')}
+                >
+                  All ({lessonStats.all})
+                </button>
+                <button
+                  type="button"
+                  className={`list-tab ${lessonDurationFilter === 'long' ? 'active' : ''}`}
+                  onClick={() => setLessonDurationFilter('long')}
+                >
+                  Long Read ({lessonStats.long})
+                </button>
+                <button
+                  type="button"
+                  className={`list-tab ${lessonDurationFilter === 'short' ? 'active' : ''}`}
+                  onClick={() => setLessonDurationFilter('short')}
+                >
+                  Quick Read ({lessonStats.short})
+                </button>
+              </div>
+
+              <div className="list-controls lesson-list-controls">
+                <input
+                  placeholder="Search lessons by title, text, module"
+                  value={lessonQuery}
+                  onChange={(event) => setLessonQuery(event.target.value)}
+                />
+                <select value={lessonModuleFilter} onChange={(event) => setLessonModuleFilter(event.target.value)}>
+                  <option value="all">All Modules</option>
+                  {modules.map((moduleItem) => (
+                    <option key={moduleItem.id} value={moduleItem.id}>
+                      {moduleItem.title}
+                    </option>
+                  ))}
+                </select>
+                <select value={lessonSort} onChange={(event) => setLessonSort(event.target.value)}>
+                  <option value="module-asc">Sort: Module</option>
+                  <option value="title-asc">Sort: Title A-Z</option>
+                  <option value="time-desc">Sort: Longest First</option>
+                  <option value="time-asc">Sort: Shortest First</option>
+                </select>
+                <button
+                  type="button"
+                  className="ghost compact-btn"
+                  onClick={() => {
+                    setLessonQuery('');
+                    setLessonModuleFilter('all');
+                    setLessonDurationFilter('all');
+                    setLessonSort('module-asc');
+                  }}
+                >
+                  Reset
+                </button>
+              </div>
+
+              <p className="list-summary">Showing {filteredLessons.length} of {lessons.length} lessons</p>
+
               <div className="table-wrapper">
                 <table>
                   <thead>
@@ -588,8 +829,8 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {lessons.length ? (
-                      lessons.map((lessonItem) => (
+                    {filteredLessons.length ? (
+                      filteredLessons.map((lessonItem) => (
                         <tr key={lessonItem.id}>
                           <td>{moduleMap[lessonItem.module_id]?.title || '-'}</td>
                           <td>{lessonItem.title}</td>
@@ -608,7 +849,7 @@ function App() {
                     ) : (
                       <tr>
                         <td colSpan="5" className="empty">
-                          No lessons yet.
+                          {lessons.length ? 'No lessons match your filters.' : 'No lessons yet.'}
                         </td>
                       </tr>
                     )}
