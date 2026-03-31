@@ -573,7 +573,7 @@ function App() {
       <main className="content">
         <header className="topbar">
           <div>
-            <p className="eyebrow">Control Center</p>
+            <p className="eyebrow">Control Center v2</p>
             <h2>{activePage}</h2>
           </div>
           <button type="button" className="secondary compact-btn" onClick={() => refreshAllData(true)} disabled={isLoadingData}>
