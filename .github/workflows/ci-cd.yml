@@ -69,11 +69,23 @@ jobs:
       - name: Setup SSH key
         run: |
           mkdir -p ~/.ssh
-          printf "%s" "${{ secrets.DO_SSH_PRIVATE_KEY }}" | tr -d '\r' > ~/.ssh/do_deploy_key
+
+          # Support both true multiline secrets and escaped "\\n" one-line secrets.
+          raw_key="${{ secrets.DO_SSH_PRIVATE_KEY }}"
+          if printf "%s" "$raw_key" | grep -q '\\n'; then
+            printf "%b" "$raw_key" | tr -d '\r' > ~/.ssh/do_deploy_key
+          else
+            printf "%s" "$raw_key" | tr -d '\r' > ~/.ssh/do_deploy_key
+          fi
+
           chmod 600 ~/.ssh/do_deploy_key
 
           # Fail early if the private key is malformed or wrong.
-          ssh-keygen -y -f ~/.ssh/do_deploy_key > /dev/null
+          if ! ssh-keygen -y -f ~/.ssh/do_deploy_key > /dev/null 2>&1; then
+            echo "Invalid DO_SSH_PRIVATE_KEY format."
+            echo "Expected full OpenSSH private key with BEGIN/END lines."
+            exit 1
+          fi
 
           target_port="${{ secrets.DO_SSH_PORT }}"
           if [ -z "$target_port" ]; then
