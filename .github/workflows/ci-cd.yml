@@ -23,21 +23,19 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: admin-panel/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        working-directory: admin-panel
         run: npm ci
 
       - name: Build project
-        working-directory: admin-panel
         run: npm run build
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: build
-          path: admin-panel/dist
+          path: dist
 
   deploy:
     name: Deploy To DigitalOcean
