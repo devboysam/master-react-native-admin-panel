@@ -69,9 +69,31 @@ jobs:
       - name: Setup SSH key
         run: |
           mkdir -p ~/.ssh
-          printf "%s" "${{ secrets.DO_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H "${{ secrets.DO_SSH_HOST }}" >> ~/.ssh/known_hosts
+          printf "%s" "${{ secrets.DO_SSH_PRIVATE_KEY }}" | tr -d '\r' > ~/.ssh/do_deploy_key
+          chmod 600 ~/.ssh/do_deploy_key
+
+          # Fail early if the private key is malformed or wrong.
+          ssh-keygen -y -f ~/.ssh/do_deploy_key > /dev/null
+
+          target_port="${{ secrets.DO_SSH_PORT }}"
+          if [ -z "$target_port" ]; then
+            target_port="22"
+          fi
+          ssh-keyscan -p "$target_port" -H "${{ secrets.DO_SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: SSH preflight
+        env:
+          SSH_PORT: ${{ secrets.DO_SSH_PORT }}
+        run: |
+          target_port="${SSH_PORT:-22}"
+          ssh \
+            -i ~/.ssh/do_deploy_key \
+            -p "$target_port" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            -o StrictHostKeyChecking=yes \
+            "${{ secrets.DO_SSH_USER }}@${{ secrets.DO_SSH_HOST }}" \
+            "echo 'SSH preflight ok on host:' \"\$(hostname)\""
 
       - name: Deploy via rsync over SSH
         env:
@@ -81,8 +103,15 @@ jobs:
           target_path="${DEPLOY_PATH:-/var/www/masterreactnative.dev}"
           target_port="${SSH_PORT:-22}"
 
-          ssh -p "$target_port" "${{ secrets.DO_SSH_USER }}@${{ secrets.DO_SSH_HOST }}" "mkdir -p '$target_path'"
+          ssh \
+            -i ~/.ssh/do_deploy_key \
+            -p "$target_port" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            -o StrictHostKeyChecking=yes \
+            "${{ secrets.DO_SSH_USER }}@${{ secrets.DO_SSH_HOST }}" \
+            "mkdir -p '$target_path'"
 
           rsync -az --delete \
-            -e "ssh -p $target_port" \
+            -e "ssh -i ~/.ssh/do_deploy_key -p $target_port -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes" \
             dist/ "${{ secrets.DO_SSH_USER }}@${{ secrets.DO_SSH_HOST }}:$target_path/"
