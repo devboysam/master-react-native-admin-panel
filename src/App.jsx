@@ -8,6 +8,8 @@ const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
   import.meta.env.VITE_API_URL ||
   'https://api.masterreactnative.dev';
+const API_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 20000);
+const API_RETRIES = Number(import.meta.env.VITE_API_RETRIES || 2);
 
 const NAV_ITEMS = ['Dashboard', 'Modules', 'Lessons', 'Settings'];
 
@@ -106,6 +108,31 @@ function convertPlainTextToHtml(rawContent) {
   });
 
   return html;
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function getWithRetry(url, options = {}) {
+  const retries = Number(options.retries ?? API_RETRIES);
+  const timeout = Number(options.timeout ?? API_TIMEOUT_MS);
+
+  let lastError;
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await axios.get(url, { timeout });
+    } catch (error) {
+      lastError = error;
+      if (attempt >= retries) {
+        throw lastError;
+      }
+      await wait(350 * (attempt + 1));
+    }
+  }
+
+  throw lastError;
 }
 
 function buildLessonPreviewHtml(rawContent) {
@@ -280,7 +307,7 @@ function App() {
   }, [isLessonModalOpen, lessonPreviewHtml]);
 
   async function fetchModulesAndLessons() {
-    const modulesResponse = await axios.get(`${API_BASE_URL}/api/modules`);
+    const modulesResponse = await getWithRetry(`${API_BASE_URL}/api/modules`);
     const moduleRows = modulesResponse.data.data || [];
     setModules(moduleRows);
 
@@ -290,8 +317,7 @@ function App() {
     }
 
     const lessonRequests = moduleRows.map((moduleItem) =>
-      axios
-        .get(`${API_BASE_URL}/api/modules/${moduleItem.id}/lessons`)
+      getWithRetry(`${API_BASE_URL}/api/modules/${moduleItem.id}/lessons`)
         .then((response) => response.data.data || [])
         .catch(() => [])
     );
