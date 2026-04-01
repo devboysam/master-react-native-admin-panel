@@ -127,6 +127,7 @@ jobs:
           ssh \
             -i ~/.ssh/do_deploy_key \
             -p "$target_port" \
+            -o IdentitiesOnly=yes \
             -o BatchMode=yes \
             -o ConnectTimeout=15 \
             -o StrictHostKeyChecking=yes \
@@ -144,6 +145,7 @@ jobs:
           ssh \
             -i ~/.ssh/do_deploy_key \
             -p "$target_port" \
+            -o IdentitiesOnly=yes \
             -o BatchMode=yes \
             -o ConnectTimeout=15 \
             -o StrictHostKeyChecking=yes \
@@ -151,5 +153,5 @@ jobs:
             "mkdir -p '$target_path'"
 
           rsync -az --delete \
-            -e "ssh -i ~/.ssh/do_deploy_key -p $target_port -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes" \
+            -e "ssh -i ~/.ssh/do_deploy_key -p $target_port -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes" \
             dist/ "${{ secrets.DO_SSH_USER }}@${{ secrets.DO_SSH_HOST }}:$target_path/"
