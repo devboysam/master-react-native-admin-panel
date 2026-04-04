@@ -10,6 +10,7 @@ const API_BASE_URL =
   'https://api.masterreactnative.dev';
 const API_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 20000);
 const API_RETRIES = Number(import.meta.env.VITE_API_RETRIES || 2);
+const SYNC_TIMEOUT_MS = Number(import.meta.env.VITE_SYNC_TIMEOUT_MS || 12000);
 
 const NAV_ITEMS = ['Dashboard', 'Modules', 'Lessons', 'Settings'];
 
@@ -135,6 +136,15 @@ async function getWithRetry(url, options = {}) {
   throw lastError;
 }
 
+function withTimeout(promise, timeoutMs, message) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(message)), timeoutMs);
+    }),
+  ]);
+}
+
 function buildLessonPreviewHtml(rawContent) {
   const text = String(rawContent || '').trim();
   if (!text) {
@@ -178,7 +188,6 @@ function App() {
   const lessonPreviewRef = useRef(null);
 
   const totalLessons = lessons.length;
-  const totalMinutes = modules.reduce((sum, moduleItem) => sum + Number(moduleItem.total_read_time || 0), 0);
 
   const moduleMap = useMemo(() => {
     return modules.reduce((accumulator, moduleItem) => {
@@ -342,23 +351,27 @@ function App() {
       setMessage({ type: '', text: '' });
     }
 
-    const contentResult = await Promise.allSettled([fetchModulesAndLessons()]);
-    const hasContentError = contentResult[0].status === 'rejected';
+    try {
+      const contentResult = await Promise.allSettled([
+        withTimeout(fetchModulesAndLessons(), SYNC_TIMEOUT_MS, 'Modules/Lessons request timed out'),
+      ]);
+      const hasContentError = contentResult[0].status === 'rejected';
 
-    if (hasContentError) {
-      setApiHealth('Unavailable');
-      setMessage({
-        type: 'error',
-        text: `Backend sync issue: ${formatError(contentResult[0].reason, 'Modules/Lessons failed')}`,
-      });
-    } else {
-      setApiHealth('Connected');
-      if (showMessage) {
-        setMessage({ type: 'success', text: 'Data synced successfully' });
+      if (hasContentError) {
+        setApiHealth('Unavailable');
+        setMessage({
+          type: 'error',
+          text: `Backend sync issue: ${formatError(contentResult[0].reason, 'Modules/Lessons failed')}`,
+        });
+      } else {
+        setApiHealth('Connected');
+        if (showMessage) {
+          setMessage({ type: 'success', text: 'Data synced successfully' });
+        }
       }
+    } finally {
+      setIsLoadingData(false);
     }
-
-    setIsLoadingData(false);
   }
 
   useEffect(() => {
@@ -619,10 +632,6 @@ function App() {
               <article>
                 <p>Lessons</p>
                 <strong>{totalLessons}</strong>
-              </article>
-              <article>
-                <p>Total Learning Time</p>
-                <strong>{totalMinutes} min</strong>
               </article>
             </div>
 
