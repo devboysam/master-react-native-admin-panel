@@ -177,8 +177,16 @@ body {
   border-radius: 16px;
   padding: 16px;
   color: #ffffff;
-  background: linear-gradient(145deg, #0d1d31 0%, #17406b 100%);
-  box-shadow: 0 14px 34px rgba(19, 42, 70, 0.16);
+  background: linear-gradient(145deg, #0f2a47 0%, #156b7a 100%);
+  box-shadow: 0 14px 34px rgba(15, 62, 83, 0.22);
+}
+
+.kpi-grid article:nth-child(2) {
+  background: linear-gradient(145deg, #1e2a5a 0%, #3453b3 100%);
+}
+
+.kpi-grid article:nth-child(3) {
+  background: linear-gradient(145deg, #3d2558 0%, #8b3f8e 100%);
 }
 
 .kpi-grid p {
@@ -205,6 +213,10 @@ body {
   border-radius: 16px;
   padding: 16px;
   box-shadow: 0 10px 24px rgba(17, 34, 64, 0.06);
+}
+
+.page-panel .card {
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
 }
 
 .card h3 {
