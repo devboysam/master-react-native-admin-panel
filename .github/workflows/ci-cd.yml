@@ -131,19 +131,26 @@ jobs:
           DEPLOY_PATH: ${{ secrets.DO_DEPLOY_PATH }}
           SSH_PORT: ${{ secrets.DO_SSH_PORT }}
         run: |
-          target_path="${DEPLOY_PATH:-/var/www/admin}"
+          target_path_raw="${DEPLOY_PATH:-/var/www/admin}"
+          target_path="$(printf "%s" "$target_path_raw" | tr -d '\r' | head -n 1)"
+          target_path="${target_path%/}"
+          if [ -z "$target_path" ]; then
+            target_path="/var/www/admin"
+          fi
+
+          if ! printf "%s" "$target_path" | grep -Eq '^/[A-Za-z0-9._/-]+$'; then
+            echo "Invalid DO_DEPLOY_PATH value: must be an absolute unix path like /var/www/admin"
+            exit 1
+          fi
+
+          if [ "$target_path" = "/" ]; then
+            echo "Refusing to deploy to root directory (/)."
+            exit 1
+          fi
+
           target_port="${SSH_PORT:-22}"
 
-          ssh \
-            -i ~/.ssh/do_deploy_key \
-            -p "$target_port" \
-            -o IdentitiesOnly=yes \
-            -o BatchMode=yes \
-            -o ConnectTimeout=15 \
-            -o StrictHostKeyChecking=yes \
-            "root@165.232.190.21" \
-            "mkdir -p '$target_path'"
-
           rsync -az --delete \
+            --rsync-path="mkdir -p '$target_path' && rsync" \
             -e "ssh -i ~/.ssh/do_deploy_key -p $target_port -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes" \
             dist/ "root@165.232.190.21:$target_path/"
