@@ -10,7 +10,7 @@ const API_BASE_URL =
   'https://api.masterreactnative.dev';
 const API_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 20000);
 const API_RETRIES = Number(import.meta.env.VITE_API_RETRIES || 2);
-const SYNC_TIMEOUT_MS = Number(import.meta.env.VITE_SYNC_TIMEOUT_MS || 12000);
+const SYNC_TIMEOUT_MS = Number(import.meta.env.VITE_SYNC_TIMEOUT_MS || 25000);
 
 const NAV_ITEMS = ['Dashboard', 'Modules', 'Lessons', 'Settings'];
 
@@ -118,13 +118,17 @@ function wait(ms) {
 async function getWithRetry(url, options = {}) {
   const retries = Number(options.retries ?? API_RETRIES);
   const timeout = Number(options.timeout ?? API_TIMEOUT_MS);
+  const signal = options.signal;
 
   let lastError;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
-      return await axios.get(url, { timeout });
+      return await axios.get(url, { timeout, signal });
     } catch (error) {
+      if (error?.code === 'ERR_CANCELED' || signal?.aborted) {
+        throw error;
+      }
       lastError = error;
       if (attempt >= retries) {
         throw lastError;
@@ -135,16 +139,6 @@ async function getWithRetry(url, options = {}) {
 
   throw lastError;
 }
-
-function withTimeout(promise, timeoutMs, message) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => {
-      setTimeout(() => reject(new Error(message)), timeoutMs);
-    }),
-  ]);
-}
-
 function buildLessonPreviewHtml(rawContent) {
   const text = String(rawContent || '').trim();
   if (!text) {
@@ -315,20 +309,27 @@ function App() {
     });
   }, [isLessonModalOpen, lessonPreviewHtml]);
 
-  async function fetchModulesAndLessons() {
-    const modulesResponse = await getWithRetry(`${API_BASE_URL}/api/modules`);
+  async function fetchModulesAndLessons(options = {}) {
+    const modulesResponse = await getWithRetry(`${API_BASE_URL}/api/modules`, { signal: options.signal });
     const moduleRows = modulesResponse.data.data || [];
     setModules(moduleRows);
 
-    if (!moduleRows.length) {
+    const modulesWithLessons = moduleRows.filter((moduleItem) => Number(moduleItem.lesson_count || 0) > 0);
+
+    if (!modulesWithLessons.length) {
       setLessons([]);
       return;
     }
 
-    const lessonRequests = moduleRows.map((moduleItem) =>
-      getWithRetry(`${API_BASE_URL}/api/modules/${moduleItem.id}/lessons`)
+    const lessonRequests = modulesWithLessons.map((moduleItem) =>
+      getWithRetry(`${API_BASE_URL}/api/modules/${moduleItem.id}/lessons`, { signal: options.signal })
         .then((response) => response.data.data || [])
-        .catch(() => [])
+        .catch((error) => {
+          if (error?.code === 'ERR_CANCELED') {
+            throw error;
+          }
+          return [];
+        })
     );
 
     const groupedLessons = await Promise.all(lessonRequests);
@@ -351,25 +352,29 @@ function App() {
       setMessage({ type: '', text: '' });
     }
 
-    try {
-      const contentResult = await Promise.allSettled([
-        withTimeout(fetchModulesAndLessons(), SYNC_TIMEOUT_MS, 'Modules/Lessons request timed out'),
-      ]);
-      const hasContentError = contentResult[0].status === 'rejected';
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, SYNC_TIMEOUT_MS);
 
-      if (hasContentError) {
-        setApiHealth('Unavailable');
-        setMessage({
-          type: 'error',
-          text: `Backend sync issue: ${formatError(contentResult[0].reason, 'Modules/Lessons failed')}`,
-        });
-      } else {
-        setApiHealth('Connected');
-        if (showMessage) {
-          setMessage({ type: 'success', text: 'Data synced successfully' });
-        }
+    try {
+      await fetchModulesAndLessons({ signal: controller.signal });
+      setApiHealth('Connected');
+      if (showMessage) {
+        setMessage({ type: 'success', text: 'Data synced successfully' });
       }
+    } catch (error) {
+      setApiHealth('Unavailable');
+      const fallback =
+        error?.code === 'ERR_CANCELED'
+          ? `Modules/Lessons request timed out after ${Math.round(SYNC_TIMEOUT_MS / 1000)}s`
+          : 'Modules/Lessons failed';
+      setMessage({
+        type: 'error',
+        text: `Backend sync issue: ${formatError(error, fallback)}`,
+      });
     } finally {
+      clearTimeout(timeoutId);
       setIsLoadingData(false);
     }
   }
