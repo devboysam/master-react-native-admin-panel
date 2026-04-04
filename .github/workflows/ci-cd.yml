@@ -52,12 +52,6 @@ jobs:
       - name: Validate required deploy secrets
         run: |
           missing=0
-          for key in DO_SSH_HOST DO_SSH_USER; do
-            if [ -z "${!key}" ]; then
-              echo "Missing required secret: $key"
-              missing=1
-            fi
-          done
           if [ -z "$DO_SSH_PRIVATE_KEY" ]; then
             echo "Missing required secret: DO_SSH_PRIVATE_KEY"
             missing=1
@@ -66,8 +60,6 @@ jobs:
             exit 1
           fi
         env:
-          DO_SSH_HOST: ${{ secrets.DO_SSH_HOST }}
-          DO_SSH_USER: ${{ secrets.DO_SSH_USER }}
           DO_SSH_PRIVATE_KEY: ${{ secrets.DO_SSH_PRIVATE_KEY }}
 
       - name: Setup SSH key
@@ -117,7 +109,7 @@ jobs:
           if [ -z "$target_port" ]; then
             target_port="22"
           fi
-          ssh-keyscan -p "$target_port" -H "${{ secrets.DO_SSH_HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -p "$target_port" -H "165.232.190.21" >> ~/.ssh/known_hosts
 
       - name: SSH preflight
         env:
@@ -131,7 +123,7 @@ jobs:
             -o BatchMode=yes \
             -o ConnectTimeout=15 \
             -o StrictHostKeyChecking=yes \
-            "${{ secrets.DO_SSH_USER }}@${{ secrets.DO_SSH_HOST }}" \
+            "root@165.232.190.21" \
             "echo 'SSH preflight ok on host:' \"\$(hostname)\""
 
       - name: Deploy via rsync over SSH
@@ -139,7 +131,7 @@ jobs:
           DEPLOY_PATH: ${{ secrets.DO_DEPLOY_PATH }}
           SSH_PORT: ${{ secrets.DO_SSH_PORT }}
         run: |
-          target_path="${DEPLOY_PATH:-/var/www/masterreactnative.dev}"
+          target_path="${DEPLOY_PATH:-/var/www/admin}"
           target_port="${SSH_PORT:-22}"
 
           ssh \
@@ -149,9 +141,9 @@ jobs:
             -o BatchMode=yes \
             -o ConnectTimeout=15 \
             -o StrictHostKeyChecking=yes \
-            "${{ secrets.DO_SSH_USER }}@${{ secrets.DO_SSH_HOST }}" \
+            "root@165.232.190.21" \
             "mkdir -p '$target_path'"
 
           rsync -az --delete \
             -e "ssh -i ~/.ssh/do_deploy_key -p $target_port -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes" \
-            dist/ "${{ secrets.DO_SSH_USER }}@${{ secrets.DO_SSH_HOST }}:$target_path/"
+            dist/ "root@165.232.190.21:$target_path/"
