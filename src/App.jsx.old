@@ -19,10 +19,8 @@ const initialModuleForm = {
   title: '',
   description: '',
   prerequisites: [],
-  icon: 'book',
-  image_url: '',
   order_index: 0,
-  background_color: '#61DAFB',
+  background_color: '#EAF2FF',
 };
 
 const initialLessonForm = {
@@ -31,7 +29,6 @@ const initialLessonForm = {
   title: '',
   description: '',
   read_time: 5,
-  lesson_order: 0,
   content: '',
 };
 
@@ -142,7 +139,6 @@ async function getWithRetry(url, options = {}) {
 
   throw lastError;
 }
-
 function buildLessonPreviewHtml(rawContent) {
   const text = String(rawContent || '').trim();
   if (!text) {
@@ -167,8 +163,11 @@ function App() {
   const [modules, setModules] = useState([]);
   const [lessons, setLessons] = useState([]);
   const [moduleQuery, setModuleQuery] = useState('');
+  const [moduleVisibility, setModuleVisibility] = useState('all');
   const [moduleSort, setModuleSort] = useState('order-asc');
   const [lessonQuery, setLessonQuery] = useState('');
+  const [lessonModuleFilter, setLessonModuleFilter] = useState('all');
+  const [lessonDurationFilter, setLessonDurationFilter] = useState('all');
   const [lessonSort, setLessonSort] = useState('module-asc');
   const [moduleForm, setModuleForm] = useState(initialModuleForm);
   const [lessonForm, setLessonForm] = useState(initialLessonForm);
@@ -185,53 +184,126 @@ function App() {
   const totalLessons = lessons.length;
 
   const moduleMap = useMemo(() => {
-    return modules.reduce((acc, item) => {
-      acc[item.id] = item;
-      return acc;
+    return modules.reduce((accumulator, moduleItem) => {
+      accumulator[moduleItem.id] = moduleItem;
+      return accumulator;
     }, {});
   }, [modules]);
 
   const latestLessons = lessons.slice(0, 6);
   const lessonPreviewHtml = useMemo(() => buildLessonPreviewHtml(lessonForm.content), [lessonForm.content]);
 
+  const moduleStats = useMemo(() => {
+    const withLessons = modules.filter((moduleItem) => Number(moduleItem.lesson_count) > 0).length;
+    return {
+      all: modules.length,
+      withLessons,
+      empty: modules.length - withLessons,
+    };
+  }, [modules]);
+
   const filteredModules = useMemo(() => {
     const query = moduleQuery.trim().toLowerCase();
-    const rows = modules.filter((item) => {
-      const prerequisites = parsePrerequisites(item.prerequisites).join(' ').toLowerCase();
-      const searchable = [item.title, item.description, prerequisites].join(' ').toLowerCase();
-      return !query || searchable.includes(query);
+
+    const rows = modules.filter((moduleItem) => {
+      const prerequisites = parsePrerequisites(moduleItem.prerequisites).join(' ').toLowerCase();
+      const searchable = [moduleItem.title, moduleItem.description, prerequisites].join(' ').toLowerCase();
+
+      if (query && !searchable.includes(query)) {
+        return false;
+      }
+
+      if (moduleVisibility === 'with-lessons') {
+        return Number(moduleItem.lesson_count) > 0;
+      }
+
+      if (moduleVisibility === 'empty') {
+        return Number(moduleItem.lesson_count) === 0;
+      }
+
+      return true;
     });
 
-    return [...rows].sort((a, b) => {
-      if (moduleSort === 'title-asc') return String(a.title || '').localeCompare(String(b.title || ''));
-      if (moduleSort === 'title-desc') return String(b.title || '').localeCompare(String(a.title || ''));
-      if (moduleSort === 'lessons-desc') return Number(b.lesson_count || 0) - Number(a.lesson_count || 0);
-      if (moduleSort === 'time-desc') return Number(b.total_read_time || 0) - Number(a.total_read_time || 0);
+    const sortedRows = [...rows].sort((a, b) => {
+      if (moduleSort === 'title-asc') {
+        return String(a.title || '').localeCompare(String(b.title || ''));
+      }
+      if (moduleSort === 'title-desc') {
+        return String(b.title || '').localeCompare(String(a.title || ''));
+      }
+      if (moduleSort === 'lessons-desc') {
+        return Number(b.lesson_count || 0) - Number(a.lesson_count || 0);
+      }
+      if (moduleSort === 'time-desc') {
+        return Number(b.total_read_time || 0) - Number(a.total_read_time || 0);
+      }
+
       return Number(a.order_index || 0) - Number(b.order_index || 0);
     });
-  }, [modules, moduleQuery, moduleSort]);
+
+    return sortedRows;
+  }, [modules, moduleQuery, moduleVisibility, moduleSort]);
+
+  const lessonStats = useMemo(() => {
+    const short = lessons.filter((lessonItem) => Number(lessonItem.read_time || 0) <= 5).length;
+    return {
+      all: lessons.length,
+      short,
+      long: lessons.length - short,
+    };
+  }, [lessons]);
 
   const filteredLessons = useMemo(() => {
     const query = lessonQuery.trim().toLowerCase();
-    const rows = lessons.filter((item) => {
-      const moduleTitle = moduleMap[item.module_id]?.title || '';
-      const searchable = [item.title, item.description, item.content, moduleTitle].join(' ').toLowerCase();
-      return !query || searchable.includes(query);
+
+    const rows = lessons.filter((lessonItem) => {
+      const moduleTitle = moduleMap[lessonItem.module_id]?.title || '';
+      const searchable = [lessonItem.title, lessonItem.description, lessonItem.content, moduleTitle].join(' ').toLowerCase();
+
+      if (query && !searchable.includes(query)) {
+        return false;
+      }
+
+      if (lessonModuleFilter !== 'all' && Number(lessonItem.module_id) !== Number(lessonModuleFilter)) {
+        return false;
+      }
+
+      if (lessonDurationFilter === 'short') {
+        return Number(lessonItem.read_time || 0) <= 5;
+      }
+
+      if (lessonDurationFilter === 'long') {
+        return Number(lessonItem.read_time || 0) > 5;
+      }
+
+      return true;
     });
 
-    return [...rows].sort((a, b) => {
-      if (lessonSort === 'title-asc') return String(a.title || '').localeCompare(String(b.title || ''));
-      if (lessonSort === 'time-desc') return Number(b.read_time || 0) - Number(a.read_time || 0);
-      if (lessonSort === 'time-asc') return Number(a.read_time || 0) - Number(b.read_time || 0);
+    const sortedRows = [...rows].sort((a, b) => {
+      if (lessonSort === 'title-asc') {
+        return String(a.title || '').localeCompare(String(b.title || ''));
+      }
+      if (lessonSort === 'time-desc') {
+        return Number(b.read_time || 0) - Number(a.read_time || 0);
+      }
+      if (lessonSort === 'time-asc') {
+        return Number(a.read_time || 0) - Number(b.read_time || 0);
+      }
+
       if (Number(a.module_id || 0) !== Number(b.module_id || 0)) {
         return Number(a.module_id || 0) - Number(b.module_id || 0);
       }
-      return Number(a.lesson_order || 0) - Number(b.lesson_order || 0);
+      return String(a.title || '').localeCompare(String(b.title || ''));
     });
-  }, [lessons, lessonQuery, lessonSort, moduleMap]);
+
+    return sortedRows;
+  }, [lessons, lessonQuery, lessonModuleFilter, lessonDurationFilter, lessonSort, moduleMap]);
 
   useEffect(() => {
-    if (!isLessonModalOpen || !lessonPreviewRef.current) return;
+    if (!isLessonModalOpen || !lessonPreviewRef.current) {
+      return;
+    }
+
     lessonPreviewRef.current.querySelectorAll('pre code').forEach((block) => {
       hljs.highlightElement(block);
     });
@@ -242,18 +314,20 @@ function App() {
     const moduleRows = modulesResponse.data.data || [];
     setModules(moduleRows);
 
-    const modulesWithLessons = moduleRows.filter((item) => Number(item.lesson_count || 0) > 0);
+    const modulesWithLessons = moduleRows.filter((moduleItem) => Number(moduleItem.lesson_count || 0) > 0);
 
     if (!modulesWithLessons.length) {
       setLessons([]);
       return;
     }
 
-    const lessonRequests = modulesWithLessons.map((item) =>
-      getWithRetry(`${API_BASE_URL}/api/modules/${item.id}/lessons`, { signal: options.signal })
+    const lessonRequests = modulesWithLessons.map((moduleItem) =>
+      getWithRetry(`${API_BASE_URL}/api/modules/${moduleItem.id}/lessons`, { signal: options.signal })
         .then((response) => response.data.data || [])
         .catch((error) => {
-          if (error?.code === 'ERR_CANCELED') throw error;
+          if (error?.code === 'ERR_CANCELED') {
+            throw error;
+          }
           return [];
         })
     );
@@ -263,7 +337,10 @@ function App() {
       if (Number(a.module_id) !== Number(b.module_id)) {
         return Number(a.module_id) - Number(b.module_id);
       }
-      return Number(a.lesson_order || 0) - Number(b.lesson_order || 0);
+      if (Number(a.lesson_order) !== Number(b.lesson_order)) {
+        return Number(a.lesson_order) - Number(b.lesson_order);
+      }
+      return Number(a.id) - Number(b.id);
     });
 
     setLessons(mergedLessons);
@@ -271,21 +348,31 @@ function App() {
 
   async function refreshAllData(showMessage = false) {
     setIsLoadingData(true);
-    if (showMessage) setMessage({ type: '', text: '' });
+    if (showMessage) {
+      setMessage({ type: '', text: '' });
+    }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), SYNC_TIMEOUT_MS);
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, SYNC_TIMEOUT_MS);
 
     try {
       await fetchModulesAndLessons({ signal: controller.signal });
       setApiHealth('Connected');
-      if (showMessage) setMessage({ type: 'success', text: 'Data synced successfully' });
+      if (showMessage) {
+        setMessage({ type: 'success', text: 'Data synced successfully' });
+      }
     } catch (error) {
       setApiHealth('Unavailable');
-      const fallback = error?.code === 'ERR_CANCELED' 
-        ? `Modules/Lessons request timed out after ${Math.round(SYNC_TIMEOUT_MS / 1000)}s`
-        : 'Modules/Lessons failed';
-      setMessage({ type: 'error', text: `Backend sync issue: ${formatError(error, fallback)}` });
+      const fallback =
+        error?.code === 'ERR_CANCELED'
+          ? `Modules/Lessons request timed out after ${Math.round(SYNC_TIMEOUT_MS / 1000)}s`
+          : 'Modules/Lessons failed';
+      setMessage({
+        type: 'error',
+        text: `Backend sync issue: ${formatError(error, fallback)}`,
+      });
     } finally {
       clearTimeout(timeoutId);
       setIsLoadingData(false);
@@ -296,6 +383,17 @@ function App() {
     refreshAllData(false);
   }, []);
 
+  useEffect(() => {
+    if (lessonModuleFilter === 'all') {
+      return;
+    }
+
+    const exists = modules.some((moduleItem) => Number(moduleItem.id) === Number(lessonModuleFilter));
+    if (!exists) {
+      setLessonModuleFilter('all');
+    }
+  }, [modules, lessonModuleFilter]);
+
   function openCreateModuleModal() {
     setModuleForm(initialModuleForm);
     setModulePrerequisiteInput('');
@@ -303,14 +401,12 @@ function App() {
   }
 
   function openEditModuleModal(moduleItem) {
-    const normalizedBgColor = normalizeHexColor(moduleItem.background_color) || '#61DAFB';
+    const normalizedBgColor = normalizeHexColor(moduleItem.background_color) || '#EAF2FF';
     setModuleForm({
       id: moduleItem.id,
       title: moduleItem.title || '',
       description: moduleItem.description || '',
       prerequisites: parsePrerequisites(moduleItem.prerequisites),
-      icon: moduleItem.icon || 'book',
-      image_url: moduleItem.image_url || '',
       order_index: Number(moduleItem.order_index) || 0,
       background_color: normalizedBgColor,
     });
@@ -327,11 +423,18 @@ function App() {
 
   function addPrerequisiteChip(value) {
     const chip = value.trim();
-    if (!chip) return;
+    if (!chip) {
+      return;
+    }
 
     setModuleForm((prev) => {
-      if (prev.prerequisites.includes(chip)) return prev;
-      return { ...prev, prerequisites: [...prev.prerequisites, chip] };
+      if (prev.prerequisites.includes(chip)) {
+        return prev;
+      }
+      return {
+        ...prev,
+        prerequisites: [...prev.prerequisites, chip],
+      };
     });
     setModulePrerequisiteInput('');
   }
@@ -351,7 +454,7 @@ function App() {
     try {
       const normalizedBgColor = normalizeHexColor(moduleForm.background_color);
       if (!normalizedBgColor) {
-        setMessage({ type: 'error', text: 'Background color must be a 6-digit hex value like #61DAFB' });
+        setMessage({ type: 'error', text: 'Background color must be a 6-digit hex value like #EAF2FF' });
         setIsSavingModule(false);
         return;
       }
@@ -359,8 +462,6 @@ function App() {
       const payload = {
         title: moduleForm.title,
         description: moduleForm.description,
-        icon: moduleForm.icon,
-        image_url: moduleForm.image_url || null,
         prerequisites: moduleForm.prerequisites.join(', '),
         order_index: Number(moduleForm.order_index) || 0,
         background_color: normalizedBgColor,
@@ -385,7 +486,9 @@ function App() {
 
   async function handleDeleteModule(moduleId) {
     const confirmed = window.confirm('Delete this module and all related lessons?');
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
 
     try {
       await axios.delete(`${API_BASE_URL}/api/modules/${moduleId}`);
@@ -400,7 +503,10 @@ function App() {
   }
 
   function openCreateLessonModal() {
-    setLessonForm(initialLessonForm);
+    setLessonForm({
+      ...initialLessonForm,
+      module_id: lessonModuleFilter !== 'all' ? String(lessonModuleFilter) : '',
+    });
     setIsLessonModalOpen(true);
   }
 
@@ -414,7 +520,6 @@ function App() {
         title: fullLesson.title || '',
         description: fullLesson.description || '',
         read_time: Number(fullLesson.read_time) || 5,
-        lesson_order: Number(fullLesson.lesson_order) || 0,
         content: fullLesson.content || '',
       });
       setIsLessonModalOpen(true);
@@ -429,25 +534,12 @@ function App() {
     setMessage({ type: '', text: '' });
 
     try {
-      if (!lessonForm.title.trim()) {
-        setMessage({ type: 'error', text: 'Lesson title is required' });
-        setIsSavingLesson(false);
-        return;
-      }
-
-      if (!lessonForm.module_id) {
-        setMessage({ type: 'error', text: 'Please select a module' });
-        setIsSavingLesson(false);
-        return;
-      }
-
       const payload = {
         module_id: Number(lessonForm.module_id),
-        title: lessonForm.title.trim(),
-        description: lessonForm.description || '',
-        content: lessonForm.content || '',
+        title: lessonForm.title,
+        description: lessonForm.description,
+        content: lessonForm.content,
         read_time: Number(lessonForm.read_time) || 5,
-        lesson_order: Number(lessonForm.lesson_order) || 0,
       };
 
       if (lessonForm.id) {
@@ -469,7 +561,9 @@ function App() {
 
   async function handleDeleteLesson(lessonId) {
     const confirmed = window.confirm('Delete this lesson?');
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
 
     try {
       await axios.delete(`${API_BASE_URL}/api/lessons/${lessonId}`);
@@ -575,9 +669,33 @@ function App() {
                 <button type="button" className="compact-btn" onClick={openCreateModuleModal}>Create Module</button>
               </div>
 
+              <div className="list-tabs" role="tablist" aria-label="Module visibility">
+                <button
+                  type="button"
+                  className={`list-tab ${moduleVisibility === 'all' ? 'active' : ''}`}
+                  onClick={() => setModuleVisibility('all')}
+                >
+                  All ({moduleStats.all})
+                </button>
+                <button
+                  type="button"
+                  className={`list-tab ${moduleVisibility === 'with-lessons' ? 'active' : ''}`}
+                  onClick={() => setModuleVisibility('with-lessons')}
+                >
+                  With Lessons ({moduleStats.withLessons})
+                </button>
+                <button
+                  type="button"
+                  className={`list-tab ${moduleVisibility === 'empty' ? 'active' : ''}`}
+                  onClick={() => setModuleVisibility('empty')}
+                >
+                  Empty ({moduleStats.empty})
+                </button>
+              </div>
+
               <div className="list-controls">
                 <input
-                  placeholder="Search modules by title, description"
+                  placeholder="Search modules by title, description, prerequisites"
                   value={moduleQuery}
                   onChange={(event) => setModuleQuery(event.target.value)}
                 />
@@ -593,6 +711,7 @@ function App() {
                   className="ghost compact-btn"
                   onClick={() => {
                     setModuleQuery('');
+                    setModuleVisibility('all');
                     setModuleSort('order-asc');
                   }}
                 >
@@ -606,42 +725,60 @@ function App() {
                 <table>
                   <thead>
                     <tr>
+                      <th>#</th>
                       <th>Title</th>
                       <th>Description</th>
                       <th>BG Color</th>
-                      <th>Image URL</th>
+                      <th>Prerequisites</th>
                       <th>Lessons</th>
+                      <th>Total Time</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredModules.length ? (
-                      filteredModules.map((moduleItem) => (
+                      filteredModules.map((moduleItem, index) => (
                         <tr key={moduleItem.id}>
+                          <td>{index + 1}</td>
                           <td>{moduleItem.title}</td>
                           <td>{moduleItem.description || '-'}</td>
                           <td>
                             <div className="module-bg-cell">
                               <span
                                 className="module-bg-swatch"
-                                style={{ backgroundColor: normalizeHexColor(moduleItem.background_color) || '#61DAFB' }}
+                                style={{ backgroundColor: normalizeHexColor(moduleItem.background_color) || '#EAF2FF' }}
                                 aria-hidden="true"
                               />
-                              <small>{normalizeHexColor(moduleItem.background_color) || '#61DAFB'}</small>
+                              <small>{normalizeHexColor(moduleItem.background_color) || '#EAF2FF'}</small>
                             </div>
                           </td>
-                          <td><small>{moduleItem.image_url ? '✓' : '-'}</small></td>
+                          <td>
+                            {parsePrerequisites(moduleItem.prerequisites).length ? (
+                              <div className="table-prereq-list">
+                                {parsePrerequisites(moduleItem.prerequisites).map((item) => (
+                                  <span key={`${moduleItem.id}-${item}`} className="table-prereq-chip">{item}</span>
+                                ))}
+                              </div>
+                            ) : (
+                              '-'
+                            )}
+                          </td>
                           <td>{moduleItem.lesson_count}</td>
+                          <td>{moduleItem.total_read_time} min</td>
                           <td className="actions">
-                            <button type="button" onClick={() => openEditModuleModal(moduleItem)}>Edit</button>
-                            <button type="button" className="danger" onClick={() => handleDeleteModule(moduleItem.id)}>Delete</button>
+                            <button type="button" onClick={() => openEditModuleModal(moduleItem)}>
+                              Edit
+                            </button>
+                            <button type="button" className="danger" onClick={() => handleDeleteModule(moduleItem.id)}>
+                              Delete
+                            </button>
                           </td>
                         </tr>
                       ))
                     ) : (
                       <tr>
-                        <td colSpan="6" className="empty">
-                          {modules.length ? 'No modules match your search.' : 'No modules yet.'}
+                        <td colSpan="8" className="empty">
+                          {modules.length ? 'No modules match your filters.' : 'No modules yet.'}
                         </td>
                       </tr>
                     )}
@@ -660,14 +797,46 @@ function App() {
                 <button type="button" className="compact-btn" onClick={openCreateLessonModal}>Create Lesson</button>
               </div>
 
+              <div className="list-tabs" role="tablist" aria-label="Lesson duration">
+                <button
+                  type="button"
+                  className={`list-tab ${lessonDurationFilter === 'all' ? 'active' : ''}`}
+                  onClick={() => setLessonDurationFilter('all')}
+                >
+                  All ({lessonStats.all})
+                </button>
+                <button
+                  type="button"
+                  className={`list-tab ${lessonDurationFilter === 'long' ? 'active' : ''}`}
+                  onClick={() => setLessonDurationFilter('long')}
+                >
+                  Long Read ({lessonStats.long})
+                </button>
+                <button
+                  type="button"
+                  className={`list-tab ${lessonDurationFilter === 'short' ? 'active' : ''}`}
+                  onClick={() => setLessonDurationFilter('short')}
+                >
+                  Quick Read ({lessonStats.short})
+                </button>
+              </div>
+
               <div className="list-controls lesson-list-controls">
                 <input
-                  placeholder="Search lessons by title or content"
+                  placeholder="Search lessons by title, text, module"
                   value={lessonQuery}
                   onChange={(event) => setLessonQuery(event.target.value)}
                 />
+                <select value={lessonModuleFilter} onChange={(event) => setLessonModuleFilter(event.target.value)}>
+                  <option value="all">All Modules</option>
+                  {modules.map((moduleItem) => (
+                    <option key={moduleItem.id} value={moduleItem.id}>
+                      {moduleItem.title}
+                    </option>
+                  ))}
+                </select>
                 <select value={lessonSort} onChange={(event) => setLessonSort(event.target.value)}>
-                  <option value="module-asc">Sort: By Module</option>
+                  <option value="module-asc">Sort: Module</option>
                   <option value="title-asc">Sort: Title A-Z</option>
                   <option value="time-desc">Sort: Longest First</option>
                   <option value="time-asc">Sort: Shortest First</option>
@@ -677,6 +846,8 @@ function App() {
                   className="ghost compact-btn"
                   onClick={() => {
                     setLessonQuery('');
+                    setLessonModuleFilter('all');
+                    setLessonDurationFilter('all');
                     setLessonSort('module-asc');
                   }}
                 >
@@ -704,17 +875,21 @@ function App() {
                           <td>{moduleMap[lessonItem.module_id]?.title || '-'}</td>
                           <td>{lessonItem.title}</td>
                           <td>{lessonItem.read_time} min</td>
-                          <td><small>{lessonItem.description || (lessonItem.content?.slice(0, 60) + '...')  || '-'}</small></td>
+                          <td>{lessonItem.description || lessonItem.content?.slice(0, 80) || '-'}</td>
                           <td className="actions">
-                            <button type="button" onClick={() => openEditLessonModal(lessonItem)}>Edit</button>
-                            <button type="button" className="danger" onClick={() => handleDeleteLesson(lessonItem.id)}>Delete</button>
+                            <button type="button" onClick={() => openEditLessonModal(lessonItem)}>
+                              Edit
+                            </button>
+                            <button type="button" className="danger" onClick={() => handleDeleteLesson(lessonItem.id)}>
+                              Delete
+                            </button>
                           </td>
                         </tr>
                       ))
                     ) : (
                       <tr>
                         <td colSpan="5" className="empty">
-                          {lessons.length ? 'No lessons match your search.' : 'No lessons yet.'}
+                          {lessons.length ? 'No lessons match your filters.' : 'No lessons yet.'}
                         </td>
                       </tr>
                     )}
@@ -728,11 +903,25 @@ function App() {
         {activePage === 'Settings' ? (
           <section className="page-panel">
             <section className="card">
-              <h3>API Health Check</h3>
-              <p>Test connection to backend API server</p>
-              <button type="button" className="secondary compact-btn" onClick={handleApiHealthCheck}>
-                Check API Health
-              </button>
+              <h3>System Settings</h3>
+              <div className="settings-grid">
+                <article>
+                  <h4>Backend API Endpoint</h4>
+                  <p>{API_BASE_URL}</p>
+                </article>
+                <article>
+                  <h4>Connection Status</h4>
+                  <p>{apiHealth}</p>
+                </article>
+              </div>
+              <div className="settings-actions">
+                <button type="button" className="compact-btn" onClick={handleApiHealthCheck}>
+                  Run API Health Check
+                </button>
+                <button type="button" className="secondary compact-btn" onClick={() => refreshAllData(true)}>
+                  Sync Everything
+                </button>
+              </div>
             </section>
           </section>
         ) : null}
@@ -753,9 +942,9 @@ function App() {
               <h3>{moduleForm.id ? 'Edit Module' : 'Create Module'}</h3>
             </div>
 
-            <form className="form-stack modal-scrollable" onSubmit={handleSaveModule}>
+            <form className="form-stack" onSubmit={handleSaveModule}>
               <label className="field-row">
-                <span>Module Title *</span>
+                <span>Module Title</span>
                 <input
                   required
                   placeholder="Enter module title"
@@ -767,65 +956,46 @@ function App() {
               <label className="field-row">
                 <span>Module Description</span>
                 <textarea
-                  rows="3"
-                  placeholder="Enter module description (optional)"
+                  rows="4"
+                  placeholder="Enter module description"
                   value={moduleForm.description}
                   onChange={(event) => setModuleForm({ ...moduleForm, description: event.target.value })}
                 />
               </label>
 
               <label className="field-row">
-                <span>Background Color (hex)</span>
-                <div className="color-input-wrap">
+                <span>Module Background Color (hex)</span>
+                <div className="color-input-row">
                   <input
                     type="color"
-                    value={normalizeHexColor(moduleForm.background_color) || '#61DAFB'}
+                    className="color-picker"
+                    value={normalizeHexColor(moduleForm.background_color) || '#EAF2FF'}
                     onChange={(event) => setModuleForm({ ...moduleForm, background_color: event.target.value })}
+                    aria-label="Pick module background color"
                   />
                   <input
-                    type="text"
-                    placeholder="#61DAFB"
+                    placeholder="#EAF2FF"
                     value={moduleForm.background_color}
                     onChange={(event) => setModuleForm({ ...moduleForm, background_color: event.target.value })}
                   />
                 </div>
               </label>
 
-              <label className="field-row">
-                <span>Icon (emoji or name)</span>
-                <input
-                  placeholder="book, code, design, etc."
-                  value={moduleForm.icon}
-                  onChange={(event) => setModuleForm({ ...moduleForm, icon: event.target.value })}
-                />
-              </label>
+              <div className="module-bg-preview">
+                <span>Background Preview</span>
+                <div
+                  className="module-bg-preview-box"
+                  style={{ backgroundColor: normalizeHexColor(moduleForm.background_color) || '#EAF2FF' }}
+                >
+                  {normalizeHexColor(moduleForm.background_color) || '#EAF2FF'}
+                </div>
+              </div>
 
-              <label className="field-row">
-                <span>Image URL</span>
-                <input
-                  type="url"
-                  placeholder="https://example.com/image.png"
-                  value={moduleForm.image_url}
-                  onChange={(event) => setModuleForm({ ...moduleForm, image_url: event.target.value })}
-                />
-              </label>
-
-              <label className="field-row">
-                <span>Module Order</span>
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="0"
-                  value={moduleForm.order_index}
-                  onChange={(event) => setModuleForm({ ...moduleForm, order_index: event.target.value })}
-                />
-              </label>
-
-              <label className="field-row">
-                <span>Prerequisites</span>
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+              <div className="chip-input-wrap">
+                <label>Prerequisites</label>
+                <div className="chip-input-row">
                   <input
-                    placeholder="Enter prerequisite"
+                    placeholder="Type and press Enter"
                     value={modulePrerequisiteInput}
                     onChange={(event) => setModulePrerequisiteInput(event.target.value)}
                     onKeyDown={(event) => {
@@ -844,14 +1014,16 @@ function App() {
                     moduleForm.prerequisites.map((chip) => (
                       <span className="chip" key={chip}>
                         {chip}
-                        <button type="button" onClick={() => removePrerequisiteChip(chip)}>x</button>
+                        <button type="button" onClick={() => removePrerequisiteChip(chip)}>
+                          x
+                        </button>
                       </span>
                     ))
                   ) : (
                     <small className="empty">No prerequisites added.</small>
                   )}
                 </div>
-              </label>
+              </div>
 
               <button type="submit" className="compact-btn" disabled={isSavingModule}>
                 {isSavingModule ? 'Saving...' : moduleForm.id ? 'Update Module' : 'Create Module'}
@@ -876,9 +1048,9 @@ function App() {
               <h3>{lessonForm.id ? 'Edit Lesson' : 'Create Lesson'}</h3>
             </div>
 
-            <form className="form-stack modal-scrollable" onSubmit={handleSaveLesson}>
+            <form className="form-stack" onSubmit={handleSaveLesson}>
               <label className="field-row">
-                <span>Select Module *</span>
+                <span>Select Module</span>
                 <select
                   required
                   value={lessonForm.module_id}
@@ -894,7 +1066,7 @@ function App() {
               </label>
 
               <label className="field-row">
-                <span>Lesson Title *</span>
+                <span>Lesson Title</span>
                 <input
                   required
                   placeholder="Enter lesson title"
@@ -908,28 +1080,17 @@ function App() {
                 <input
                   type="number"
                   min="1"
-                  placeholder="5"
+                  placeholder="Time needed"
                   value={lessonForm.read_time}
                   onChange={(event) => setLessonForm({ ...lessonForm, read_time: event.target.value })}
                 />
               </label>
 
               <label className="field-row">
-                <span>Lesson Order</span>
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="0"
-                  value={lessonForm.lesson_order}
-                  onChange={(event) => setLessonForm({ ...lessonForm, lesson_order: event.target.value })}
-                />
-              </label>
-
-              <label className="field-row">
                 <span>Lesson Description</span>
                 <textarea
-                  rows="2"
-                  placeholder="Short summary (optional)"
+                  rows="3"
+                  placeholder="Short summary shown in lesson list"
                   value={lessonForm.description}
                   onChange={(event) => setLessonForm({ ...lessonForm, description: event.target.value })}
                 />
@@ -958,7 +1119,7 @@ function App() {
               <label className="field-row">
                 <span>Lesson Content</span>
                 <textarea
-                  rows="10"
+                  rows="14"
                   className="full-span"
                   placeholder="Lesson content (supports long text and code snippets)"
                   value={lessonForm.content}

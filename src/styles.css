@@ -1,15 +1,18 @@
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
 
+/* React Native Color Scheme */
 :root {
-  --bg: #f3f5f8;
+  --bg: #f0f2f5;
   --panel: #ffffff;
-  --line: #dde3ea;
+  --line: #e0e0e0;
   --text: #192332;
-  --muted: #627086;
-  --brand: #0d9488;
-  --brand-strong: #0f766e;
-  --danger: #b42318;
-  --navy: #112240;
+  --muted: #666666;
+  --brand: #61DAFB;
+  --brand-dark:#0ea5e9;
+  --brand-strong: #0284c7;
+  --danger: #dc2626;
+  --navy: #1e293b;
+  --accent: #9B59B6;
   font-family: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
   color: var(--text);
 }
@@ -27,8 +30,8 @@ body,
 
 body {
   background:
-    radial-gradient(1200px 420px at 10% 0%, #dae8ff 0%, rgba(218, 232, 255, 0) 65%),
-    radial-gradient(800px 400px at 100% 30%, #ddf7ee 0%, rgba(221, 247, 238, 0) 60%),
+    radial-gradient(1200px 420px at 10% 0%, rgba(97, 218, 251, 0.1) 0%, rgba(97, 218, 251, 0) 65%),
+    radial-gradient(800px 400px at 100% 30%, rgba(155, 89, 182, 0.08) 0%, rgba(155, 89, 182, 0) 60%),
     var(--bg);
 }
 
@@ -39,10 +42,10 @@ body {
 }
 
 .sidebar {
-  background: linear-gradient(165deg, #0d1d31 0%, #132a46 100%);
+  background: linear-gradient(165deg, #0a2342 0%, #1a3a52 100%);
   color: #f4f8ff;
   padding: 24px 16px;
-  border-right: 1px solid #1f3656;
+  border-right: 2px solid #61DAFB;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -86,8 +89,8 @@ body {
 }
 
 .nav-item.active {
-  border-color: #47b4aa;
-  background: linear-gradient(135deg, rgba(13, 148, 136, 0.25), rgba(11, 116, 108, 0.2));
+  border-color: #61DAFB;
+  background: linear-gradient(135deg, rgba(97, 218, 251, 0.25), rgba(2, 132, 199, 0.2));
   color: #ffffff;
 }
 
@@ -306,7 +309,7 @@ textarea {
 input:focus,
 textarea:focus,
 select:focus {
-  outline: 2px solid #9dd9d4;
+  outline: 2px solid rgba(97, 218, 251, 0.3);
   border-color: var(--brand);
 }
 
@@ -326,21 +329,21 @@ button:hover {
 }
 
 button.secondary {
-  background: #516074;
+  background: #4b5563;
 }
 
 button.secondary:hover {
-  background: #445263;
+  background: #3d525a;
 }
 
 button.ghost {
-  background: #eef2f7;
-  color: #304154;
-  border: 1px solid #cdd7e3;
+  background: #f0f4f8;
+  color: #1e293b;
+  border: 1px solid #cbd5e1;
 }
 
 button.ghost:hover {
-  background: #e2e9f2;
+  background: #e8eef7;
 }
 
 button.danger {
@@ -822,4 +825,47 @@ th {
   .modal-backdrop {
     padding: 10px;
   }
+}
+
+/* Modal Scrollable Form Support */
+.modal-scrollable {
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.modal-scrollable::-webkit-scrollbar {
+  width: 6px;
+}
+
+.modal-scrollable::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.modal-scrollable::-webkit-scrollbar-thumb {
+  background: rgba(97, 218, 251, 0.3);
+  border-radius: 3px;
+}
+
+.modal-scrollable::-webkit-scrollbar-thumb:hover {
+  background: rgba(97, 218, 251, 0.6);
+}
+
+/* Color Input Wrapper */
+.color-input-wrap {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.color-input-wrap input[type="color"] {
+  width: 50px;
+  height: 40px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid var(--line);
+}
+
+.color-input-wrap input[type="text"] {
+  flex: 1;
 }
