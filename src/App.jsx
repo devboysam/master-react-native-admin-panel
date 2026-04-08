@@ -30,8 +30,8 @@ const initialLessonForm = {
   module_id: '',
   title: '',
   description: '',
-  read_time: 5,
-  lesson_order: 0,
+  read_time: '',
+  lesson_order: '',
   content: '',
 };
 
@@ -74,6 +74,37 @@ function normalizeHexColor(value) {
 
   const withHash = raw.startsWith('#') ? raw : `#${raw}`;
   return /^#[0-9A-Fa-f]{6}$/.test(withHash) ? withHash.toUpperCase() : null;
+}
+
+function parseOptionalNumberInput(value) {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  const normalized = typeof value === 'string' ? value.trim() : value;
+  if (normalized === '') {
+    return null;
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : NaN;
+}
+
+function normalizeImageUrlInput(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return undefined;
+    }
+    return parsed.toString();
+  } catch {
+    return undefined;
+  }
 }
 
 function escapeHtml(value) {
@@ -168,8 +199,6 @@ function App() {
   const [lessons, setLessons] = useState([]);
   const [moduleQuery, setModuleQuery] = useState('');
   const [moduleSort, setModuleSort] = useState('order-asc');
-  const [lessonQuery, setLessonQuery] = useState('');
-  const [lessonSort, setLessonSort] = useState('module-asc');
   const [moduleForm, setModuleForm] = useState(initialModuleForm);
   const [lessonForm, setLessonForm] = useState(initialLessonForm);
   const [modulePrerequisiteInput, setModulePrerequisiteInput] = useState('');
@@ -181,12 +210,22 @@ function App() {
   const [isSavingLesson, setIsSavingLesson] = useState(false);
   const [apiHealth, setApiHealth] = useState('Unknown');
   const lessonPreviewRef = useRef(null);
+  const moduleModalScrollRef = useRef(null);
+  const lessonModalScrollRef = useRef(null);
+  const lessonEditRequestIdRef = useRef(0);
 
   const totalLessons = lessons.length;
 
   const moduleMap = useMemo(() => {
     return modules.reduce((acc, item) => {
       acc[item.id] = item;
+      return acc;
+    }, {});
+  }, [modules]);
+
+  const moduleOrderMap = useMemo(() => {
+    return modules.reduce((acc, item) => {
+      acc[item.id] = Number(item.order_index) || 0;
       return acc;
     }, {});
   }, [modules]);
@@ -211,24 +250,26 @@ function App() {
     });
   }, [modules, moduleQuery, moduleSort]);
 
-  const filteredLessons = useMemo(() => {
-    const query = lessonQuery.trim().toLowerCase();
-    const rows = lessons.filter((item) => {
-      const moduleTitle = moduleMap[item.module_id]?.title || '';
-      const searchable = [item.title, item.description, item.content, moduleTitle].join(' ').toLowerCase();
-      return !query || searchable.includes(query);
-    });
+  const orderedLessons = useMemo(() => {
+    return [...lessons].sort((a, b) => {
+      const aModuleOrder = moduleOrderMap[a.module_id] ?? Number.MAX_SAFE_INTEGER;
+      const bModuleOrder = moduleOrderMap[b.module_id] ?? Number.MAX_SAFE_INTEGER;
 
-    return [...rows].sort((a, b) => {
-      if (lessonSort === 'title-asc') return String(a.title || '').localeCompare(String(b.title || ''));
-      if (lessonSort === 'time-desc') return Number(b.read_time || 0) - Number(a.read_time || 0);
-      if (lessonSort === 'time-asc') return Number(a.read_time || 0) - Number(b.read_time || 0);
+      if (aModuleOrder !== bModuleOrder) {
+        return aModuleOrder - bModuleOrder;
+      }
+
       if (Number(a.module_id || 0) !== Number(b.module_id || 0)) {
         return Number(a.module_id || 0) - Number(b.module_id || 0);
       }
-      return Number(a.lesson_order || 0) - Number(b.lesson_order || 0);
+
+      if (Number(a.lesson_order || 0) !== Number(b.lesson_order || 0)) {
+        return Number(a.lesson_order || 0) - Number(b.lesson_order || 0);
+      }
+
+      return Number(a.id || 0) - Number(b.id || 0);
     });
-  }, [lessons, lessonQuery, lessonSort, moduleMap]);
+  }, [lessons, moduleOrderMap]);
 
   useEffect(() => {
     if (!isLessonModalOpen || !lessonPreviewRef.current) return;
@@ -236,6 +277,14 @@ function App() {
       hljs.highlightElement(block);
     });
   }, [isLessonModalOpen, lessonPreviewHtml]);
+
+  function scrollModalToTop(modalRef) {
+    requestAnimationFrame(() => {
+      if (modalRef.current) {
+        modalRef.current.scrollTop = 0;
+      }
+    });
+  }
 
   async function fetchModulesAndLessons(options = {}) {
     const modulesResponse = await getWithRetry(`${API_BASE_URL}/api/modules`, { signal: options.signal });
@@ -300,6 +349,7 @@ function App() {
     setModuleForm(initialModuleForm);
     setModulePrerequisiteInput('');
     setIsModuleModalOpen(true);
+    scrollModalToTop(moduleModalScrollRef);
   }
 
   function openEditModuleModal(moduleItem) {
@@ -316,6 +366,7 @@ function App() {
     });
     setModulePrerequisiteInput('');
     setIsModuleModalOpen(true);
+    scrollModalToTop(moduleModalScrollRef);
   }
 
   function appendLessonSnippet(snippet) {
@@ -349,6 +400,13 @@ function App() {
     setMessage({ type: '', text: '' });
 
     try {
+      const normalizedTitle = String(moduleForm.title || '').trim();
+      if (!normalizedTitle) {
+        setMessage({ type: 'error', text: 'Module title is required' });
+        setIsSavingModule(false);
+        return;
+      }
+
       const normalizedBgColor = normalizeHexColor(moduleForm.background_color);
       if (!normalizedBgColor) {
         setMessage({ type: 'error', text: 'Background color must be a 6-digit hex value like #61DAFB' });
@@ -356,11 +414,18 @@ function App() {
         return;
       }
 
+      const normalizedImageUrl = normalizeImageUrlInput(moduleForm.image_url);
+      if (normalizedImageUrl === undefined) {
+        setMessage({ type: 'error', text: 'Image URL must start with http:// or https://' });
+        setIsSavingModule(false);
+        return;
+      }
+
       const payload = {
-        title: moduleForm.title,
+        title: normalizedTitle,
         description: moduleForm.description,
         icon: moduleForm.icon,
-        image_url: moduleForm.image_url || null,
+        image_url: normalizedImageUrl,
         prerequisites: moduleForm.prerequisites.join(', '),
         order_index: Number(moduleForm.order_index) || 0,
         background_color: normalizedBgColor,
@@ -401,23 +466,38 @@ function App() {
 
   function openCreateLessonModal() {
     setLessonForm(initialLessonForm);
+    lessonEditRequestIdRef.current += 1;
     setIsLessonModalOpen(true);
+    scrollModalToTop(lessonModalScrollRef);
+  }
+
+  function closeLessonModal() {
+    lessonEditRequestIdRef.current += 1;
+    setIsLessonModalOpen(false);
   }
 
   async function openEditLessonModal(lessonItem) {
+    const requestId = lessonEditRequestIdRef.current + 1;
+    lessonEditRequestIdRef.current = requestId;
+
     try {
       const response = await axios.get(`${API_BASE_URL}/api/lessons/${lessonItem.id}`);
+      if (requestId !== lessonEditRequestIdRef.current) {
+        return;
+      }
+
       const fullLesson = response.data.data;
       setLessonForm({
         id: fullLesson.id,
         module_id: String(fullLesson.module_id),
         title: fullLesson.title || '',
         description: fullLesson.description || '',
-        read_time: Number(fullLesson.read_time) || 5,
-        lesson_order: Number(fullLesson.lesson_order) || 0,
+        read_time: fullLesson.read_time ?? '',
+        lesson_order: fullLesson.lesson_order ?? '',
         content: fullLesson.content || '',
       });
       setIsLessonModalOpen(true);
+      scrollModalToTop(lessonModalScrollRef);
     } catch (error) {
       setMessage({ type: 'error', text: formatError(error, 'Failed to load lesson details') });
     }
@@ -429,7 +509,8 @@ function App() {
     setMessage({ type: '', text: '' });
 
     try {
-      if (!lessonForm.title.trim()) {
+      const normalizedTitle = String(lessonForm.title || '').trim();
+      if (!normalizedTitle) {
         setMessage({ type: 'error', text: 'Lesson title is required' });
         setIsSavingLesson(false);
         return;
@@ -441,13 +522,33 @@ function App() {
         return;
       }
 
+      const parsedReadTime = parseOptionalNumberInput(lessonForm.read_time);
+      if (Number.isNaN(parsedReadTime)) {
+        setMessage({ type: 'error', text: 'Time needed must be a valid number or empty' });
+        setIsSavingLesson(false);
+        return;
+      }
+
+      if (parsedReadTime !== null && parsedReadTime < 0) {
+        setMessage({ type: 'error', text: 'Time needed cannot be negative' });
+        setIsSavingLesson(false);
+        return;
+      }
+
+      const parsedLessonOrder = parseOptionalNumberInput(lessonForm.lesson_order);
+      if (Number.isNaN(parsedLessonOrder)) {
+        setMessage({ type: 'error', text: 'Lesson order must be a valid number or empty' });
+        setIsSavingLesson(false);
+        return;
+      }
+
       const payload = {
         module_id: Number(lessonForm.module_id),
-        title: lessonForm.title.trim(),
+        title: normalizedTitle,
         description: lessonForm.description || '',
         content: lessonForm.content || '',
-        read_time: Number(lessonForm.read_time) || 5,
-        lesson_order: Number(lessonForm.lesson_order) || 0,
+        read_time: parsedReadTime,
+        lesson_order: parsedLessonOrder,
       };
 
       if (lessonForm.id) {
@@ -630,7 +731,16 @@ function App() {
                               <small>{normalizeHexColor(moduleItem.background_color) || '#61DAFB'}</small>
                             </div>
                           </td>
-                          <td><small>{moduleItem.image_url ? '✓' : '-'}</small></td>
+                          <td>
+                            {moduleItem.image_url ? (
+                              <div className="module-icon-cell">
+                                <img src={moduleItem.image_url} alt={`${moduleItem.title} visual`} />
+                                <small>{moduleItem.image_url.slice(0, 42)}{moduleItem.image_url.length > 42 ? '...' : ''}</small>
+                              </div>
+                            ) : (
+                              <small>-</small>
+                            )}
+                          </td>
                           <td>{moduleItem.lesson_count}</td>
                           <td className="actions">
                             <button type="button" onClick={() => openEditModuleModal(moduleItem)}>Edit</button>
@@ -660,31 +770,7 @@ function App() {
                 <button type="button" className="compact-btn" onClick={openCreateLessonModal}>Create Lesson</button>
               </div>
 
-              <div className="list-controls lesson-list-controls">
-                <input
-                  placeholder="Search lessons by title or content"
-                  value={lessonQuery}
-                  onChange={(event) => setLessonQuery(event.target.value)}
-                />
-                <select value={lessonSort} onChange={(event) => setLessonSort(event.target.value)}>
-                  <option value="module-asc">Sort: By Module</option>
-                  <option value="title-asc">Sort: Title A-Z</option>
-                  <option value="time-desc">Sort: Longest First</option>
-                  <option value="time-asc">Sort: Shortest First</option>
-                </select>
-                <button
-                  type="button"
-                  className="ghost compact-btn"
-                  onClick={() => {
-                    setLessonQuery('');
-                    setLessonSort('module-asc');
-                  }}
-                >
-                  Reset
-                </button>
-              </div>
-
-              <p className="list-summary">Showing {filteredLessons.length} of {lessons.length} lessons</p>
+              <p className="list-summary">Showing {orderedLessons.length} lessons in module/lesson order</p>
 
               <div className="table-wrapper">
                 <table>
@@ -698,13 +784,17 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredLessons.length ? (
-                      filteredLessons.map((lessonItem) => (
+                    {orderedLessons.length ? (
+                      orderedLessons.map((lessonItem) => (
                         <tr key={lessonItem.id}>
                           <td>{moduleMap[lessonItem.module_id]?.title || '-'}</td>
                           <td>{lessonItem.title}</td>
-                          <td>{lessonItem.read_time} min</td>
-                          <td><small>{lessonItem.description || (lessonItem.content?.slice(0, 60) + '...')  || '-'}</small></td>
+                          <td>{lessonItem.read_time == null ? '-' : `${lessonItem.read_time} min`}</td>
+                          <td>
+                            <small>
+                              {lessonItem.description || (lessonItem.content ? `${lessonItem.content.slice(0, 60)}...` : '-')}
+                            </small>
+                          </td>
                           <td className="actions">
                             <button type="button" onClick={() => openEditLessonModal(lessonItem)}>Edit</button>
                             <button type="button" className="danger" onClick={() => handleDeleteLesson(lessonItem.id)}>Delete</button>
@@ -714,7 +804,7 @@ function App() {
                     ) : (
                       <tr>
                         <td colSpan="5" className="empty">
-                          {lessons.length ? 'No lessons match your search.' : 'No lessons yet.'}
+                          No lessons yet.
                         </td>
                       </tr>
                     )}
@@ -753,7 +843,7 @@ function App() {
               <h3>{moduleForm.id ? 'Edit Module' : 'Create Module'}</h3>
             </div>
 
-            <form className="form-stack modal-scrollable" onSubmit={handleSaveModule}>
+            <form ref={moduleModalScrollRef} className="form-stack modal-scrollable" onSubmit={handleSaveModule}>
               <label className="field-row">
                 <span>Module Title *</span>
                 <input
@@ -791,6 +881,16 @@ function App() {
                 </div>
               </label>
 
+              <div className="module-bg-preview">
+                <span>Background Preview</span>
+                <div
+                  className="module-bg-preview-box"
+                  style={{ backgroundColor: normalizeHexColor(moduleForm.background_color) || '#61DAFB' }}
+                >
+                  {normalizeHexColor(moduleForm.background_color) || '#61DAFB'}
+                </div>
+              </div>
+
               <label className="field-row">
                 <span>Icon (emoji or name)</span>
                 <input
@@ -809,6 +909,13 @@ function App() {
                   onChange={(event) => setModuleForm({ ...moduleForm, image_url: event.target.value })}
                 />
               </label>
+
+              {moduleForm.image_url.trim() ? (
+                <div className="image-preview">
+                  <span>Image Preview</span>
+                  <img src={moduleForm.image_url} alt="Module preview" />
+                </div>
+              ) : null}
 
               <label className="field-row">
                 <span>Module Order</span>
@@ -862,21 +969,21 @@ function App() {
       ) : null}
 
       {isLessonModalOpen ? (
-        <div className="modal-backdrop" role="presentation" onClick={() => setIsLessonModalOpen(false)}>
+        <div className="modal-backdrop" role="presentation" onClick={closeLessonModal}>
           <section className="modal-card large" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <div className="modal-head">
               <button
                 type="button"
                 className="modal-close"
                 aria-label="Close lesson dialog"
-                onClick={() => setIsLessonModalOpen(false)}
+                onClick={closeLessonModal}
               >
                 x
               </button>
               <h3>{lessonForm.id ? 'Edit Lesson' : 'Create Lesson'}</h3>
             </div>
 
-            <form className="form-stack modal-scrollable" onSubmit={handleSaveLesson}>
+            <form ref={lessonModalScrollRef} className="form-stack modal-scrollable" onSubmit={handleSaveLesson}>
               <label className="field-row">
                 <span>Select Module *</span>
                 <select
@@ -907,11 +1014,12 @@ function App() {
                 <span>Time Needed (minutes)</span>
                 <input
                   type="number"
-                  min="1"
-                  placeholder="5"
+                  min="0"
+                  placeholder="Optional"
                   value={lessonForm.read_time}
                   onChange={(event) => setLessonForm({ ...lessonForm, read_time: event.target.value })}
                 />
+                <small className="field-hint">Optional. Leave empty if not needed.</small>
               </label>
 
               <label className="field-row">
@@ -959,9 +1067,10 @@ function App() {
                 <span>Lesson Content</span>
                 <textarea
                   rows="10"
-                  className="full-span"
+                  className="full-span lesson-content-input"
                   placeholder="Lesson content (supports long text and code snippets)"
                   value={lessonForm.content}
+                  spellCheck={false}
                   onChange={(event) => setLessonForm({ ...lessonForm, content: event.target.value })}
                 />
               </label>
